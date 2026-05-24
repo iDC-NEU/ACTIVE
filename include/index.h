@@ -1,6 +1,9 @@
 #ifndef STKQ_INDEX_H
 #define STKQ_INDEX_H
 
+#include <cstdint>
+#include <limits>
+#include <memory>
 #include <omp.h>
 #include <mutex>
 #include <queue>
@@ -21,6 +24,9 @@
 #include <boost/dynamic_bitset.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/heap/d_ary_heap.hpp>
+#include "neighbor.h"
+#include "new_set.h"
+#include "skyline_tree.h"
 #include "util.h"
 #include "distance.h"
 #include "parameters.h"
@@ -29,6 +35,10 @@
 #include "CommonDataStructure.h"
 #include <mm_malloc.h>
 #include <stdlib.h>
+#include "tbb/concurrent_unordered_map.h"
+#include "tbb/concurrent_unordered_set.h"
+#include "tbb/concurrent_vector.h"
+#include <atomic>
 #define INF_N -std::numeric_limits<float>::max()
 #define INF_P std::numeric_limits<float>::max()
 
@@ -531,6 +541,7 @@ namespace stkq
             float geo_distance_;
             unsigned layer_;
             std::vector<std::pair<float, float>> available_range;
+            bool flag_ = true;
 
             DEGNeighbor() = default;
             DEGNeighbor(unsigned id, float emb_distance, float geo_distance) : id_{id}, emb_distance_{emb_distance}, geo_distance_(geo_distance)
@@ -539,6 +550,7 @@ namespace stkq
             }
             DEGNeighbor(unsigned id, float emb_distance, float geo_distance, std::vector<std::pair<float, float>> range) : id_{id}, emb_distance_{emb_distance}, geo_distance_(geo_distance), available_range(range) {}
             DEGNeighbor(unsigned id, float emb_distance, float geo_distance, std::vector<std::pair<float, float>> range, unsigned l) : id_{id}, emb_distance_{emb_distance}, geo_distance_(geo_distance), available_range(range), layer_(l) {}
+            DEGNeighbor(unsigned id, float emb_distance, float geo_distance, std::vector<std::pair<float, float>> range, unsigned l, bool flag) : id_{id}, emb_distance_{emb_distance}, geo_distance_(geo_distance), available_range(range), layer_(l), flag_(flag) {}
 
             inline bool operator<(const DEGNeighbor &other) const
             {
@@ -560,22 +572,15 @@ namespace stkq
             DEGSimpleNeighbor(unsigned id, std::vector<std::pair<int8_t, int8_t>> range) : id_{id}, active_range(range) {}
         };
 
-        struct DEGNNDescentNeighbor
+        struct DEGCandidate
         {
             unsigned id_;
             float emb_distance_;
             float geo_distance_;
-            bool flag;
             int layer_;
-            DEGNNDescentNeighbor() = default;
-            DEGNNDescentNeighbor(unsigned id, float emb_distance, float geo_distance, bool f, int layer) : id_{id}, emb_distance_{emb_distance}, geo_distance_(geo_distance), flag(f), layer_(layer)
+            DEGCandidate() = default;
+            DEGCandidate(unsigned id, float emb_distance, float geo_distance, int layer) : id_{id}, emb_distance_{emb_distance}, geo_distance_(geo_distance), layer_(layer)
             {
-            }
-            inline bool operator<(const DEGNNDescentNeighbor &other) const
-            {
-                // return geo_distance_ < other.geo_distance_;
-                return (geo_distance_ < other.geo_distance_ || (geo_distance_ == other.geo_distance_ && emb_distance_ < other.emb_distance_));
-                // 较小的 geo_distance_ 值会被排序到较前的位置
             }
         };
 
@@ -587,8 +592,12 @@ namespace stkq
             {
                 // friends.reserve(max_m_ + 1);
                 // friends_for_search.reserve(max_m_ + 1);
+                in_neighbor_.grow_to_at_least(int(max_m * 1.5));
+                in_neighbor_.clear(); // 保证 size 仍然为 0
                 friends.clear();
                 friends_for_search.clear();
+                // candidate_set.clear();
+                is_delete = false;
             }
 
             inline int GetId() const { return id_; }
@@ -598,10 +607,15 @@ namespace stkq
             // inline void SetLevel(int level) { level_ = level; }
             inline void SetMaxM(int max_m) { max_m_ = max_m; }
             inline std::vector<DEGNeighbor> &GetFriends() { return friends; }
+            inline tbb::concurrent_vector<DEGNNDescentNeighbor> &GetInNeighbor() { return in_neighbor_; }
 
             inline void SetFriends(std::vector<DEGNeighbor> &new_friends)
             {
                 friends.swap(new_friends);
+            }
+            inline void SetInNeighbor(tbb::concurrent_vector<DEGNNDescentNeighbor> &new_friends)
+            {
+                in_neighbor_.swap(new_friends);
             }
 
             inline std::vector<DEGSimpleNeighbor> &GetSearchFriends() { return friends_for_search; }
@@ -611,6 +625,56 @@ namespace stkq
                 friends_for_search.swap(new_friends);
             }
 
+            inline void ClearOthers()
+            {
+                friends_for_search.clear();
+                in_neighbor_.clear();
+                is_delete = false;
+                is_in = false;
+                is_out = false;
+            }
+
+            // inline std::vector<DEGNNDescentNeighbor> &GetCandidateSet() { return candidate_set; }
+
+            // inline void SetCandidateSet(std::vector<DEGNNDescentNeighbor> &new_candidate)
+            // {
+            //     candidate_set.swap(new_candidate);
+            // }
+
+            // inline std::shared_ptr<skylinetree::SkylineTree> GetCandidateTree() { return candidate_tree; }
+
+            // inline void SetCandidateTree(std::shared_ptr<skylinetree::SkylineTree> tree) {
+            //     candidate_tree = tree;
+            // }
+
+            inline std::vector<NEWSimpleNeighborL> &GetNewSetCandidate() { return new_set_cadidate_; }
+
+            inline void SetNewSetCandidate(std::vector<NEWSimpleNeighborL> &cadidate_)
+            {
+                new_set_cadidate_.swap(cadidate_);
+            }
+
+            inline NEWSkyLine &GetNewSet() { return new_set_; }
+
+            inline void SetNewSet(NEWSkyLine &&new_set)
+            {
+                new_set_ = std::move(new_set);
+            }
+
+            inline bool GetDelete() { return is_delete; }
+
+            inline void SetDelete(bool deleted)
+            {
+                is_delete = deleted;
+            }
+            inline void Setis_in(bool in)
+            {
+                is_in = in;
+            }
+            inline bool Getis_in()
+            {
+                return is_in;
+            }
             inline std::mutex &GetAccessGuard() { return access_guard_; }
 
         private:
@@ -618,7 +682,15 @@ namespace stkq
             // int level_;
             size_t max_m_;
             std::vector<DEGNeighbor> friends;
+            tbb::concurrent_vector<DEGNNDescentNeighbor> in_neighbor_;
             std::vector<DEGSimpleNeighbor> friends_for_search;
+            // std::vector<DEGNNDescentNeighbor> candidate_set;
+            // std::shared_ptr<skylinetree::SkylineTree> candidate_tree;
+            NEWSkyLine new_set_;
+            std::vector<NEWSimpleNeighborL> new_set_cadidate_;
+            bool is_delete;
+            bool is_in;
+            bool is_out;
             std::mutex access_guard_;
         };
 
@@ -840,6 +912,8 @@ namespace stkq
                     for (auto &point : skyline_result)
                     {
                         pool.emplace_back(point.id_, point.emb_distance_, point.geo_distance_, true, l);
+                        // if (pool.size() == M)
+                        //     break;
                     }
                     std::vector<DEGNNDescentNeighbor>().swap(skyline_result);
                     std::vector<DEGNNDescentNeighbor>().swap(remain_points);
@@ -855,6 +929,10 @@ namespace stkq
                 float min_emb_dis = std::numeric_limits<float>::max();
                 for (const auto &point : points)
                 {
+                    if (point.delete_)
+                    {
+                        continue;
+                    }
                     if (point.emb_distance_ < min_emb_dis)
                     {
                         skyline.push_back(point);
@@ -867,6 +945,42 @@ namespace stkq
                 }
                 // O(n)
             }
+
+            // void findSkylineWithtree(std::vector<DEGNNDescentNeighbor> &points,
+            //                         std::vector<DEGNNDescentNeighbor> &skyline,
+            //                         std::vector<DEGNNDescentNeighbor> &remain_points,
+            //                         DirectedGraph<int, NodeInfo> &tree
+            // ) {
+            //     // Sort points by x-coordinate
+            //     // Sweep to find skyline
+            //     float min_emb_dis = std::numeric_limits<float>::max();
+            //     unsigned idx = 0;
+            //     std::vector<unsigned> st;
+            //     int head = 0;
+            //     for (const auto &point : points)
+            //     {
+            //         if (point.delete_) {
+            //             continue;
+            //         }
+            //         tree.insertNode(point.id_, NodeInfo{point.emb_distance_, point.geo_distance_, point.layer_});
+            //         if (point.emb_distance_ < min_emb_dis) {
+            //             skyline.push_back(point);
+            //             st.push_back(idx);
+            //             idx = point.id_;
+            //             min_emb_dis = point.emb_distance_;
+            //         } else {
+            //             while (head < st.size() && tree.getNodeData(st.at(head))->emb_distance_ >= point.emb_distance_) {
+            //                 head ++;
+            //             }
+            //             tree.addEdge(idx, point.id_);
+            //             for (size_t i = head; i < st.size(); i ++) {
+            //                 tree.addEdge(st.at(i), point.id_);
+            //             }
+            //             remain_points.emplace_back(point);
+            //         }
+            //     }
+            //     // O(n)
+            // }
 
             void updateNeighbor(int &nk)
             {
@@ -906,6 +1020,23 @@ namespace stkq
                 }
                 num_layer = l;
             }
+
+            // std::shared_ptr<skylinetree::SkylineTree> tree()
+            // {
+            //     std::shared_ptr<skylinetree::SkylineTree> res = std::make_shared<skylinetree::SkylineTree>();
+            //     std::vector<RecordL> candidate;
+            //     bool start_layer = false;
+            //     for (size_t i = 0; i < 100 && i < pool.size();i ++) {
+            //         auto &p = pool.at(i);
+            //         if (p.emb_distance_ == 0 && p.geo_distance_ == 0) {
+            //             start_layer = true;
+            //             continue;
+            //         }
+            //         candidate.emplace_back(p.id_, p.emb_distance_, p.geo_distance_, p.layer_ - (start_layer ? 1 : 0));
+            //     }
+            //     res->constructe(candidate);
+            //     return res;
+            // }
         };
 
         typedef std::vector<skyline_descent> SkylineDEG;
@@ -977,7 +1108,7 @@ namespace stkq
         class DEG_FurtherFirst
         {
         public:
-            DEG_FurtherFirst(DEGNode *node, float emb_distance, float geo_distance, float dist) : node_(node), emb_distance_(emb_distance), geo_distance_(geo_distance), dist_(dist) {}
+            DEG_FurtherFirst(DEGNode *node, float emb_distance, float geo_distance, float dist) : node_(node), emb_distance_(emb_distance), geo_distance_(geo_distance), dist_(dist) { source = -1; }
             inline float GetEmbDistance() const { return emb_distance_; }
             inline float GetLocDistance() const { return geo_distance_; }
             inline float GetDistance() const { return dist_; }
@@ -987,9 +1118,12 @@ namespace stkq
                 return (dist_ < n.GetDistance());
                 // 距离较小的节点会被视为“优先级较小” 因此FurtherFirst用于构建最大堆
             }
+            DEG_FurtherFirst(DEGNode *node, float emb_distance, float geo_distance, float dist, unsigned source_) : node_(node), source(source_), emb_distance_(emb_distance), geo_distance_(geo_distance), dist_(dist) {}
+            inline unsigned Getsource() const { return source; }
 
         private:
             DEGNode *node_;
+            unsigned source;
             float emb_distance_;
             float geo_distance_;
             float dist_;
@@ -998,19 +1132,22 @@ namespace stkq
         class DEG_CloserFirst
         {
         public:
-            DEG_CloserFirst(DEGNode *node, float emb_distance, float geo_distance, float dist) : node_(node), emb_distance_(emb_distance), geo_distance_(geo_distance), dist_(dist) {}
+            DEG_CloserFirst(DEGNode *node, float emb_distance, float geo_distance, float dist) : node_(node), emb_distance_(emb_distance), geo_distance_(geo_distance), dist_(dist) { source = -1; }
             inline float GetEmbDistance() const { return emb_distance_; }
             inline float GetLocDistance() const { return geo_distance_; }
             inline float GetDistance() const { return dist_; }
             inline DEGNode *GetNode() const { return node_; }
+            inline unsigned Getsource() const { return source; }
             bool operator<(const DEG_CloserFirst &n) const
             {
                 return (dist_ > n.GetDistance());
                 // 距离较小的节点会被视为“优先级较高” 因此CloserFirst用于构建最小堆
             }
+            DEG_CloserFirst(DEGNode *node, float emb_distance, float geo_distance, float dist, unsigned source_) : node_(node), source(source_), emb_distance_(emb_distance), geo_distance_(geo_distance), dist_(dist) {}
 
         private:
             DEGNode *node_;
+            unsigned source;
             float emb_distance_;
             float geo_distance_;
             float dist_;
@@ -1068,6 +1205,12 @@ namespace stkq
     class Index : public NNDescent, public NSW, public HNSW, public SSG, public NSG, public DEG, public baseline4
     {
     public:
+        std::atomic<bool> is_search_graph_finished{false};
+        std::atomic<bool> is_in_graph_finished{false};
+        unsigned current_rounds = 0;
+        unsigned avg_nbrs = 0;
+        std::vector<long long> cmp_counts;
+        int angle = 0;
         explicit Index(float max_emb_dist, float max_spatial_dist)
         {
             e_dist_ = new E_Distance(max_emb_dist);
@@ -1078,8 +1221,11 @@ namespace stkq
 
         ~Index()
         {
-            delete e_dist_;
-            delete s_dist_;
+            if (e_dist_ != nullptr && s_dist_ != nullptr)
+            {
+                delete e_dist_;
+                delete s_dist_;
+            }
         }
 
         struct SimpleNeighbor
@@ -1235,7 +1381,33 @@ namespace stkq
 
         void setGroundData(unsigned int *groundData)
         {
+            if (ground_data_ != nullptr)
+                delete[] ground_data_;
             ground_data_ = groundData;
+        }
+
+        int32_t *getDeleteData()
+        {
+            return delete_data_;
+        }
+
+        void setDeleteData(int32_t *deleteData)
+        {
+            if (delete_data_ != nullptr)
+                delete[] delete_data_; // 释放上一次
+            delete_data_ = deleteData;
+        }
+
+        int32_t *getInsertData()
+        {
+            return insert_data_;
+        }
+
+        void setInsertData(int32_t *insertData)
+        {
+            if (insert_data_ != nullptr)
+                delete[] insert_data_;
+            insert_data_ = insertData;
         }
 
         unsigned int getBaseLen() const
@@ -1247,7 +1419,14 @@ namespace stkq
         {
             base_len_ = baseLen;
         }
-
+        void setActiveIndexLen(unsigned int activelen)
+        {
+            active_index_len_ = activelen;
+        }
+        unsigned int getActiveIndexLen()
+        {
+            return active_index_len_;
+        }
         unsigned int getQueryLen() const
         {
             return query_len_;
@@ -1266,6 +1445,16 @@ namespace stkq
         void setGroundLen(unsigned int groundLen)
         {
             ground_len_ = groundLen;
+        }
+
+        unsigned int getUpdateLen() const
+        {
+            return delete_len_;
+        }
+
+        void setUpdateLen(unsigned int deleteLen)
+        {
+            delete_len_ = deleteLen;
         }
 
         unsigned int getBaseEmbDim() const
@@ -1316,6 +1505,16 @@ namespace stkq
         void setGroundDim(unsigned int groundDim)
         {
             ground_dim_ = groundDim;
+        }
+
+        unsigned int getUpdateDim() const
+        {
+            return delete_dim_;
+        }
+
+        void setUpdateDim(unsigned int deleteDim)
+        {
+            delete_dim_ = deleteDim;
         }
 
         Parameters &getParam()
@@ -1498,10 +1697,12 @@ namespace stkq
 
     private:
         float *base_emb_data_, *base_loc_data_, *query_emb_data_, *query_loc_data_, *query_alpha_;
-        unsigned *ground_data_;
+        unsigned *ground_data_ = nullptr;
+        int32_t *delete_data_ = nullptr;
+        int32_t *insert_data_ = nullptr;
 
-        unsigned base_len_, query_len_, ground_len_;
-        unsigned base_emb_dim_, base_loc_dim_, query_emb_dim_, query_loc_dim_, ground_dim_;
+        unsigned base_len_, query_len_, ground_len_, delete_len_, active_index_len_;
+        unsigned base_emb_dim_, base_loc_dim_, query_emb_dim_, query_loc_dim_, ground_dim_, delete_dim_;
 
         Parameters param_;
         unsigned init_edges_num;       // S
@@ -1509,8 +1710,8 @@ namespace stkq
         unsigned result_edges_num;     // K
         unsigned update_layer_num;
 
-        E_Distance *e_dist_;
-        E_Distance *s_dist_;
+        E_Distance *e_dist_ = nullptr;
+        E_Distance *s_dist_ = nullptr;
 
         FinalGraph final_graph_;
         LoadGraph load_graph_;

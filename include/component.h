@@ -2,14 +2,17 @@
 #define STKQ_COMPONENT_H
 
 #include "index.h"
-
+#include "neighbor.h"
+#include "new_set.h"
+#include "Timer.h"
 namespace stkq
 {
     class Component
     {
     public:
         explicit Component(Index *index) : index(index) {}
-        virtual ~Component() { delete index; }
+        virtual ~Component() {}
+        double time1 = 0, time2 = 0, time3 = 0, time4 = 0;
 
     protected:
         Index *index = nullptr;
@@ -23,6 +26,9 @@ namespace stkq
 
         virtual void LoadInner(char *data_emb_file, char *data_loc_file, char *query_emb_file, char *query_loc_file, char *query_alpha_file, char *ground_file, Parameters &parameters);
 
+        virtual void LoadInnerUpdate(char *data_emb_file, char *data_loc_file, Parameters &parameters);
+        virtual void load_trace_(char *trace_path, unsigned id_flag, Parameters &parameters);
+        virtual void load_gt_(char *gt_path, Parameters &parameters);
         // virtual void load_partition(char *partition_file);
     };
 
@@ -215,18 +221,41 @@ namespace stkq
         void InterInsert(unsigned n, unsigned range, std::vector<std::mutex> &locks,
                          std::vector<std::vector<Index::DEGNeighbor>> &cut_graph_);
 
-        void InsertNode(Index::DEGNode *qnode, Index::VisitedList *visited_list);
+        void InsertNode(Index::DEGNode *qnode, Index::VisitedList *visited_list, int tid = -1);
+
+        void Update();
+
+        void UpdateNode(Index::DEGNode *update_node, Index::VisitedList *visited_list);
+
+        void Delete();
+
+        void DeleteNode(Index::DEGNode *delete_node);
+
+        bool RemoveFromNeighborList(Index::DEGNode *node, unsigned target_id);
+
+        void RemoveFromEntryPoints(unsigned delete_id);
 
         void GenRandom(std::mt19937 &rng, unsigned *addr, unsigned size, unsigned N);
 
         void SearchAtLayer(Index::DEGNode *qnode,
                            Index::VisitedList *visited_list,
-                           std::vector<Index::DEGNNDescentNeighbor> &result);
+                           std::vector<DEGNNDescentNeighbor> &result, int tid = -1);
 
         void UpdateEnterpointSet(Index::DEGNode *qnode);
         void UpdateEnterpointSet();
 
-        void Link(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
+        void Link(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist, int tid = -1);
+
+        void LinkUpdate(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
+
+        void LinkAll(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
+
+        void LinkNewSet(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
+
+        void WriteMultipleCandidate(const std::string &filename,
+                                    const std::vector<std::vector<DEGNNDescentNeighbor>> &pools);
+
+        std::vector<DEGNNDescentNeighbor> ReadCandidateByIndex(const std::string &filename, uint64_t idx);
 
         bool isInRange(float alpha, const std::vector<std::pair<float, float>> &use_range)
         {
@@ -425,7 +454,7 @@ namespace stkq
             std::unordered_map<int, Index::HnswNode *>().swap(tmp);
             // 这两行代码通过交换技巧来清空 pool 向量和 tmp 哈希表 一种常用的释放容器占用内存的方法
         }
-void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS4FurtherFirst> &result)
+        void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS4FurtherFirst> &result)
         {
             // 它的作用是对给定节点的邻居列表进行剪枝，以选择最优的邻居
             int n = result.size();
@@ -461,7 +490,6 @@ void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS
             std::unordered_map<int, Index::BS4Node *>().swap(tmp);
             // 这两行代码通过交换技巧来清空 pool 向量和 tmp 哈希表 一种常用的释放容器占用内存的方法
         }
-                
     };
 
     // graph conn
@@ -517,7 +545,7 @@ void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS
         explicit ComponentCandidateDEG(Index *index) : ComponentCandidate(index) {}
 
         void CandidateInner(unsigned query, std::vector<unsigned> enter, boost::dynamic_bitset<> flags,
-                            std::vector<Index::DEGNNDescentNeighbor> &result);
+                            std::vector<DEGNNDescentNeighbor> &result);
     };
 
     class ComponentDEGPruneHeuristic : public ComponentPrune
@@ -699,13 +727,36 @@ void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS
             // O(n)
         }
 
-        void PruneInner(std::vector<Index::DEGNNDescentNeighbor> &pool, unsigned range,
+        void PruneInner(std::vector<DEGNNDescentNeighbor> &pool, unsigned range,
                         // std::vector<Index::DEGNeighbor> &picked);
-                        std::vector<Index::DEGNeighbor> &cut_graph_);
+                        std::vector<Index::DEGNeighbor> &cut_graph_,
+                        bool new_set, std::vector<NEWSimpleNeighborL> &remain_nodes);
 
-        void DEG2Neighbor(unsigned qnode, unsigned range, std::vector<Index::DEGNNDescentNeighbor> &pool, std::vector<Index::DEGNeighbor> &result)
+        void DEG2Neighbor(unsigned qnode, unsigned range,
+                          std::vector<DEGNNDescentNeighbor> &pool,
+                          std::vector<Index::DEGNeighbor> &result,
+                          std::vector<NEWSimpleNeighborL> &remain_nodes, bool new_set = false)
         {
-            PruneInner(pool, range, result);
+            PruneInner(pool, range, result, new_set, remain_nodes);
+        };
+
+        void PruneInner(std::vector<DEGNNDescentNeighbor> &pool, unsigned range,
+                        std::vector<Index::DEGNeighbor> &cut_graph_, int tid = -1);
+
+        void DEG2Neighbor(unsigned qnode, unsigned range,
+                          std::vector<DEGNNDescentNeighbor> &pool,
+                          std::vector<Index::DEGNeighbor> &result, int tid = -1)
+        {
+            PruneInner(pool, range, result, tid);
+        };
+        void PruneInnerOPT(std::vector<DEGNNDescentNeighbor> &pool, unsigned int range,
+                           std::vector<Index::DEGNeighbor> &cut_graph_, int angle, int tid = -1);
+
+        void DEG2NeighborOPT(unsigned qnode, unsigned range,
+                             std::vector<DEGNNDescentNeighbor> &pool,
+                             std::vector<Index::DEGNeighbor> &result, int angle, int tid = -1)
+        {
+            PruneInnerOPT(pool, range, result, angle, tid);
         };
     };
 
@@ -768,12 +819,78 @@ void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS
                            std::priority_queue<Index::FurtherFirst> &result);
     };
 
+    // class ThreadPool {
+    // public:
+    //     explicit ThreadPool(size_t numThreads) {
+    //         start(numThreads);
+    //     }
+
+    //     ~ThreadPool() {
+    //         stop();
+    //     }
+
+    //     // 提交任务，返回 future
+    //     template<class F, class... Args>
+    //     auto submit(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
+    //         using RetType = decltype(f(args...));
+    //         auto task = std::make_shared<std::packaged_task<RetType()>>(
+    //             std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+    //         );
+    //         std::future<RetType> res = task->get_future();
+
+    //         {
+    //             std::unique_lock<std::mutex> lock(m_eventMutex);
+    //             m_tasks.emplace([task]() { (*task)(); });
+    //         }
+    //         m_eventVar.notify_one();
+    //         return res;
+    //     }
+
+    // private:
+    //     std::vector<std::thread> m_threads;
+    //     std::condition_variable m_eventVar;
+    //     std::mutex m_eventMutex;
+    //     bool m_stopping = false;
+    //     std::queue<std::function<void()>> m_tasks;
+
+    //     void start(size_t numThreads) {
+    //         for (size_t i = 0; i < numThreads; ++i) {
+    //             m_threads.emplace_back([this]() {
+    //                 while (true) {
+    //                     std::function<void()> task;
+    //                     {
+    //                         std::unique_lock<std::mutex> lock(m_eventMutex);
+    //                         m_eventVar.wait(lock, [this]() { return m_stopping || !m_tasks.empty(); });
+    //                         if (m_stopping && m_tasks.empty()) break;
+    //                         task = std::move(m_tasks.front());
+    //                         m_tasks.pop();
+    //                     }
+    //                     task();
+    //                 }
+    //             });
+    //         }
+    //     }
+
+    //     void stop() {
+    //         {
+    //             std::unique_lock<std::mutex> lock(m_eventMutex);
+    //             m_stopping = true;
+    //         }
+    //         m_eventVar.notify_all();
+    //         for (auto& thread : m_threads) thread.join();
+    //     }
+    // };
+
     class ComponentSearchRouteDEG : public ComponentSearchRoute
     {
     public:
         explicit ComponentSearchRouteDEG(Index *index) : ComponentSearchRoute(index) {}
 
         void RouteInner(unsigned query, std::vector<Index::Neighbor> &pool, std::vector<unsigned> &res) override;
+        void RouteInner_test_for_prune(unsigned int query, std::vector<Index::Neighbor> &pool,
+                                       std::vector<std::pair<unsigned int, unsigned int>> &res);
+
+        // void RouteInner(unsigned query, std::vector<Index::Neighbor> &pool, std::vector<unsigned> &res, ThreadPool& tpool);
 
         bool isInRange(float alpha, const std::vector<std::pair<float, float>> &use_range)
         {
@@ -804,6 +921,10 @@ void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS
         void SearchAtLayer(unsigned qnode, Index::DEGNode *enterpoint, int level,
                            Index::VisitedList *visited_list,
                            std::priority_queue<Index::DEG_FurtherFirst> &result);
+        // void SearchAtLayer(unsigned qnode, Index::DEGNode *enterpoint, int level,
+        //                    Index::VisitedList *visited_list,
+        //                    std::priority_queue<Index::DEG_FurtherFirst> &result,
+        //                    ThreadPool& pool);
     };
 
     // search entry
@@ -863,8 +984,8 @@ void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS
     private:
         void
         // get_neighbors(const float *query, std::vector<Index::Neighbor> &retSet, std::vector<Index::Neighbor> &fullset);
-        get_neighbors(const float *query_emb, const float *query_loc, std::vector<Index::DEGNNDescentNeighbor> &retset,
-                      std::vector<Index::DEGNNDescentNeighbor> &fullset);
+        get_neighbors(const float *query_emb, const float *query_loc, std::vector<DEGNNDescentNeighbor> &retset,
+                      std::vector<DEGNNDescentNeighbor> &fullset);
     };
 
     class ComponentSearchEntryCentroid : public ComponentSearchEntry

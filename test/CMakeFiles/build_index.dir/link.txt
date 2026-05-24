@@ -1,0 +1,1 @@
+/home/linsy/openGauss-server/binarylibs/buildtools/gcc10.3/gcc/bin/g++  -fopenmp -rdynamic CMakeFiles/build_index.dir/build_index.cpp.o -o build_index  ../src/libSTKQ.a -ltbb 

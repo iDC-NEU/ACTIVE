@@ -3,7 +3,7 @@
 #include <immintrin.h>
 #define PORTABLE_ALIGN32 __attribute__((aligned(32)))
 #define PORTABLE_ALIGN64 __attribute__((aligned(64)))
-
+#include <atomic>
 namespace stkq
 {
 
@@ -58,11 +58,52 @@ namespace stkq
             }
             return ret;
         }
-
         template <typename T>
-        T compare(const T *a, const T *b, unsigned length) const
+        inline float sqr_dist_512(const T *d, const T *q, unsigned L) const
         {
-            T emb_distance = sqr_dist(a, b, length);
+            alignas(64) float TmpRes[16] = {0}; // AVX-512 一次 512 bit = 16 x float
+            uint32_t num_blk16 = L >> 4;        // 16 个 float 一块
+            uint32_t l = L & 0b1111;            // 剩余元素数
+
+            __m512 diff, v1, v2;
+            __m512 sum = _mm512_set1_ps(0.0f); // 初始化 sum = 0
+
+            // 每次处理 16 个 float
+            for (uint32_t i = 0; i < num_blk16; i++)
+            {
+                v1 = _mm512_loadu_ps(d);
+                v2 = _mm512_loadu_ps(q);
+                d += 16;
+                q += 16;
+                diff = _mm512_sub_ps(v1, v2);
+                sum = _mm512_fmadd_ps(diff, diff, sum); // sum += diff * diff
+            }
+
+            // 把 SIMD 累积结果存回数组
+            _mm512_store_ps(TmpRes, sum);
+
+            // 汇总 SIMD 累加的 16 个结果
+            float ret = 0.0f;
+            for (int i = 0; i < 16; i++)
+                ret += TmpRes[i];
+
+            // 处理剩余不足 16 个的元素
+            for (uint32_t i = 0; i < l; i++)
+            {
+                float tmp = q[i] - d[i];
+                ret += tmp * tmp;
+            }
+
+            return ret;
+        }
+        inline void add_count() { e_times.fetch_add(1, std::memory_order_relaxed); }
+        inline long long get_count() { return e_times.load(std::memory_order_relaxed); }
+        template <typename T>
+        T compare(const T *a, const T *b, unsigned length)
+        {
+            // T emb_distance = sqr_dist(a, b, length);
+            T emb_distance = sqr_dist_512(a, b, length);
+            add_count();
             return std::sqrt(emb_distance) / max_emb_dist;
         }
 
@@ -105,9 +146,11 @@ namespace stkq
         // }
 
         E_Distance(float max_emb_dist) : max_emb_dist(max_emb_dist) {}
+        void init_count() { e_times.store(0, std::memory_order_relaxed); }
 
     private:
         float max_emb_dist = 0;
+        std::atomic<long long> e_times{0};
     };
 
     class S_Distance
@@ -120,9 +163,13 @@ namespace stkq
             return std::sqrt(spatial_distance) / max_spatial_dist;
         }
         S_Distance(float max_spatial_dist) : max_spatial_dist(max_spatial_dist) {}
+        void add_count() { s_times.fetch_add(1, std::memory_order_relaxed); }
+        long long get_count() { return s_times.load(std::memory_order_relaxed); }
+        void init_count() { s_times.store(0, std::memory_order_relaxed); }
 
     private:
         float max_spatial_dist = 0;
+        std::atomic<long long> s_times{0};
     };
 }
 

@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 2.8)
 #set(CMAKE_C_COMPILER "/usr/local/bin/gcc-7")
 #set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-7")
 project(STKQ)
+set(CMAKE_CXX_STANDARD 17)
 
-set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
@@ -16,6 +16,23 @@ if (OPENMP_FOUND)
 else()
     message(FATAL_ERROR "no OpenMP supprot")
 endif()
+#tbb
+include_directories(${TBB_INCLUDE_DIRS})
+message(STATUS "TBB_INCLUDE_DIRS: ${TBB_INCLUDE_DIRS}")
+message(STATUS "TBB_LIBRARIES: ${TBB_LIBRARIES}")
+function(checkEnvAndSetLocalVar env_var msg local_var)
+	if (NOT EXISTS "$ENV{${env_var}}" )
+		message (FATAL_ERROR ${msg})
+	else()
+		if ($ENV{${env_var}} MATCHES "\\$"  OR $ENV{${env_var}} MATCHES "/$" )
+			set(${local_var} $ENV{${env_var}} PARENT_SCOPE)
+		else()
+			message(STATUS "Appending trailing backslash to ${env_var}")
+			set(${local_var} "$ENV{${env_var}}\\" PARENT_SCOPE)
+		endif()
+	endif()
+endfunction()
+
 
 #Boost
 # windows
@@ -34,8 +51,7 @@ endif()
 #include_directories(F:/Python/include)
 #link_libraries(F:/Python/libs/python38.lib)
 
-add_definitions (-std=c++14 -O2 -lboost -march=native -Wall -DINFO)
-# add_definitions(-std=c++14)
+add_compile_options(-march=native -Wall -O3 -DINFO)
 add_subdirectory(src)
 add_subdirectory(test)
 # add_compile_options(-mavx2 -O2)

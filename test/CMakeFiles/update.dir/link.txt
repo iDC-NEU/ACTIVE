@@ -1,0 +1,1 @@
+/home/linsy/openGauss-server/binarylibs/buildtools/gcc10.3/gcc/bin/g++  -fopenmp -rdynamic CMakeFiles/update.dir/update.cpp.o -o update  ../src/libSTKQ.a -ltbb 

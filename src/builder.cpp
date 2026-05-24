@@ -1,8 +1,16 @@
 
 #include "builder.h"
 #include "component.h"
+#include "parameters.h"
 #include "rtree.h"
+#include "update.h"
+#include <iostream>
+#include <memory>
+#include <ostream>
 #include <set>
+#include <vector>
+#include <thread>
+#include <chrono>
 
 namespace stkq
 {
@@ -17,9 +25,32 @@ namespace stkq
      * return pointer of builder
      */
 
-    IndexBuilder *IndexBuilder::load(char *data_emb_file, char *data_loc_file, char *query_emb_file, char *query_loc_file, char *query_alpha_file, char *ground_file, Parameters &parameters, bool dual)
+    IndexBuilder *IndexBuilder::load(char *data_emb_file, char *data_loc_file, char *query_emb_file, char *query_loc_file, char *query_alpha_file, char *ground_file, Parameters &parameters, bool dual, bool update)
     {
-        if (!dual)
+        if (update)
+        {
+            auto *a = new ComponentLoad(final_index_);
+            a->LoadInnerUpdate(data_emb_file, data_loc_file, parameters);
+            std::cout << "base data len : " << final_index_->getBaseLen() << std::endl;
+            std::cout << "base data emb dim : " << final_index_->getBaseEmbDim() << std::endl;
+            std::cout << "base data loc dim : " << final_index_->getBaseLocDim() << std::endl;
+            std::cout << "update data len : " << final_index_->getUpdateLen() << std::endl;
+            std::cout << "update data dim : " << final_index_->getUpdateDim() << std::endl;
+            if (parameters.get<unsigned>("argc") >= 16)
+            {
+                std::cout << "query data len : " << final_index_->getQueryLen() << std::endl;
+                std::cout << "query data emb dim : " << final_index_->getQueryEmbDim() << std::endl;
+                std::cout << "query data loc dim : " << final_index_->getQueryLocDim() << std::endl;
+                std::cout << "ground truth data len : " << final_index_->getGroundLen() << std::endl;
+                std::cout << "ground truth data dim : " << final_index_->getGroundDim() << std::endl;
+            }
+            // std::cout << "=====================" << std::endl;
+            // std::cout << final_index_->getParam().toString() << std::endl;
+            // std::cout << "=====================" << std::endl;
+            delete a;
+            return this;
+        }
+        else if (!dual)
         {
             auto *a = new ComponentLoad(final_index_);
             a->LoadInner(data_emb_file, data_loc_file, query_emb_file, query_loc_file, query_alpha_file, ground_file, parameters);
@@ -34,6 +65,7 @@ namespace stkq
             std::cout << "=====================" << std::endl;
             std::cout << final_index_->getParam().toString() << std::endl;
             std::cout << "=====================" << std::endl;
+            delete a;
             return this;
         }
         else
@@ -58,6 +90,7 @@ namespace stkq
             std::cout << final_index_1->get_alpha() << std::endl;
             std::cout << final_index_2->get_alpha() << std::endl;
             std::cout << "=====================" << std::endl;
+            delete a;
             return this;
         }
     }
@@ -102,6 +135,45 @@ namespace stkq
         std::cout << "__INIT FINISH__" << std::endl;
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(e - s).count();
         std::cout << "Initialization time: " << duration << " milliseconds" << std::endl;
+        delete a;
+        return this;
+    }
+
+    IndexBuilder *IndexBuilder::update(TYPE type, unsigned id_flag, Parameters &parameters)
+    {
+        int delete_mode = parameters.get<unsigned>("delete_mode");
+        s = std::chrono::high_resolution_clock::now();
+        ComponentUpdateDEG *a = nullptr;
+
+        std::cout << "__UPDATE__" << std::endl;
+        a = new ComponentUpdateDEG(final_index_);
+        final_index_->current_rounds = parameters.get<unsigned>("current_rounds");
+        switch (id_flag)
+        {
+        case 0:
+            a->Insert(delete_mode);
+            break;
+        case 1:
+            a->Delete(delete_mode);
+            break;
+        case 2:
+            a->Update();
+            break;
+        }
+        e = std::chrono::high_resolution_clock::now();
+        std::cout << "__UPDATE FINISH__" << std::endl;
+        delete a;
+        // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(e - s).count();
+        // std::cout << "Update time: " << duration << " milliseconds" << std::endl;
+        return this;
+    }
+
+    IndexBuilder *IndexBuilder::update2search()
+    {
+        ComponentUpdateDEG *a = nullptr;
+        a = new ComponentUpdateDEG(final_index_);
+        a->UpdateIndex();
+        delete a;
         return this;
     }
 
@@ -185,6 +257,7 @@ namespace stkq
         else if (type == INDEX_DEG)
         {
             int average_neighbor_size = 0;
+            int active_nodes = 0;
             unsigned enterpoint_set_size = final_index_->DEG_enterpoints.size();
             out.write((char *)&enterpoint_set_size, sizeof(unsigned));
             for (unsigned i = 0; i < enterpoint_set_size; i++)
@@ -195,11 +268,20 @@ namespace stkq
 
             for (unsigned i = 0; i < final_index_->getBaseLen(); i++)
             {
+                if (final_index_->DEG_nodes_[i]->GetDelete())
+                {
+                    unsigned node_id = final_index_->DEG_nodes_[i]->GetId();
+                    out.write((char *)&node_id, sizeof(unsigned));
+                    unsigned neighbor_size = 0;
+                    out.write((char *)&neighbor_size, sizeof(unsigned));
+                    continue;
+                }
                 unsigned node_id = final_index_->DEG_nodes_[i]->GetId();
                 out.write((char *)&node_id, sizeof(unsigned));
                 unsigned neighbor_size = final_index_->DEG_nodes_[i]->GetFriends().size();
                 out.write((char *)&neighbor_size, sizeof(unsigned));
                 average_neighbor_size = average_neighbor_size + neighbor_size;
+                active_nodes++;
 
                 for (unsigned k = 0; k < neighbor_size; k++)
                 {
@@ -228,6 +310,9 @@ namespace stkq
                 }
             }
             out.close();
+            std::cout << "average_neighbor: " << average_neighbor_size << std::endl;
+            std::cout << "active_nodes: " << active_nodes << " / " << final_index_->getBaseLen() << std::endl;
+            std::cout << "average_neighbor_size: " << average_neighbor_size / active_nodes << std::endl;
             return this;
         }
         else if (type == INDEX_RTREE)
@@ -262,7 +347,114 @@ namespace stkq
         return this;
     }
 
-    IndexBuilder *IndexBuilder::load_graph(TYPE type, char *graph_file)
+    void IndexBuilder::update_graph(const Parameters &parame)
+    {
+        final_index_->is_search_graph_finished = false;
+        final_index_->is_in_graph_finished = false;
+        // std::cout << "__Start Update Graph__" << std::endl;
+
+        unsigned max_m = parame.get<unsigned>("max_m");
+        average_neighbor_size = 0;
+        active_nodes = 0;
+        int average_neighbor_size_ = 0;
+        int active_nodes_ = 0;
+        size_t three_ = 0, two_ = 0;
+
+#pragma omp parallel for schedule(dynamic, 256) reduction(+ : average_neighbor_size_, active_nodes_)
+        for (unsigned i = 0; i < final_index_->getActiveIndexLen(); i++)
+        {
+            auto &node = final_index_->DEG_nodes_[i];
+
+            if (node->GetDelete())
+            {
+                continue;
+            }
+
+            active_nodes_++;
+
+            node->ClearOthers();
+
+            auto neighbors = node->GetFriends();
+
+            average_neighbor_size_ += neighbors.size();
+            if (neighbors.size() < 20)
+                three_++;
+            else if (neighbors.size() < 26)
+                two_++;
+
+            std::vector<Index::DEGSimpleNeighbor> search_neighbors;
+            search_neighbors.reserve(neighbors.size());
+
+            for (auto &nbr : neighbors)
+            {
+                if (final_index_->DEG_nodes_[nbr.id_]->GetDelete())
+                {
+                    // 并行区不建议打印
+                    std::abort();
+                }
+
+                auto &use_range = nbr.available_range;
+
+                std::vector<std::pair<int8_t, int8_t>> use_range_int8;
+                use_range_int8.reserve(use_range.size());
+
+                for (unsigned t = 0; t < use_range.size(); t++)
+                {
+                    int8_t range_start = static_cast<int8_t>(use_range[t].first * 100);
+                    int8_t range_end = static_cast<int8_t>(use_range[t].second * 100);
+
+                    use_range_int8.emplace_back(range_start, range_end);
+                }
+
+                search_neighbors.emplace_back(nbr.id_, std::move(use_range_int8));
+            }
+
+            node->SetSearchFriends(search_neighbors);
+        }
+        std::cout << "three_: " << three_
+                  << " (" << (double)three_ / active_nodes << ")"
+                  << ", two_: " << two_
+                  << " (" << (double)two_ / active_nodes << ")"
+                  << ", one_: " << active_nodes - three_ - two_
+                  << " (" << (double)(active_nodes - three_ - two_) / active_nodes << ")"
+                  << std::endl;
+        average_neighbor_size = average_neighbor_size_;
+        active_nodes = active_nodes_;
+        final_index_->avg_nbrs = average_neighbor_size / active_nodes;
+        final_index_->is_search_graph_finished.store(true, std::memory_order_release);
+        if (parame.get<std::string>("delete_mode") == "6" || parame.get<std::string>("delete_mode") == "7" || parame.get<std::string>("delete_mode") == "8")
+        {
+
+#pragma omp parallel for schedule(dynamic, 128)
+            for (size_t i = 0; i < final_index_->getActiveIndexLen(); i++)
+            {
+                auto node = final_index_->DEG_nodes_[i];
+                if (node->GetDelete())
+                {
+                    continue;
+                }
+                auto &neighbors = final_index_->DEG_nodes_[i]->GetFriends();
+                for (auto &n : neighbors)
+                {
+                    auto &in_neighbor = final_index_->DEG_nodes_[n.id_]->GetInNeighbor();
+                    in_neighbor.emplace_back(node->GetId(), n.emb_distance_, n.geo_distance_, true, -1);
+                }
+            }
+
+            final_index_->is_in_graph_finished.store(true, std::memory_order_release);
+        }
+
+        // std::cout << "average_neighbor_size: "
+        //           << (float)average_neighbor_size / active_nodes << std::endl;
+
+        // std::cout << "active_nodes: " << active_nodes << std::endl;
+
+        // std::cout << "__Finish Update Graph__" << std::endl;
+
+        // return this;
+    }
+
+    IndexBuilder *IndexBuilder::load_graph(TYPE type, char *graph_file, Parameters &parame)
     {
         int average_neighbor_size = 0;
         int l1_average_neighbor_size = 0;
@@ -386,29 +578,47 @@ namespace stkq
         }
         else if (type == INDEX_DEG)
         {
-            int average_neighbor_size = 0;
+            unsigned id_flag =
+                parame.get<unsigned>("id_flag");
+            int average_neighbor_size = 0, eff_size = final_index_->getBaseLen();
+            if (id_flag == 0)
+                eff_size = static_cast<int>(eff_size * 0.5);
             final_index_->DEG_nodes_.resize(final_index_->getBaseLen());
+            unsigned max_m = parame.get<unsigned>("max_m");
             for (unsigned i = 0; i < final_index_->getBaseLen(); i++)
             {
-                final_index_->DEG_nodes_[i] = new stkq::DEG::DEGNode(0, 0);
+                final_index_->DEG_nodes_[i] = new stkq::DEG::DEGNode(i, max_m);
             }
             unsigned enterpoint_id, enterpoint_size;
             final_index_->enterpoint_set.clear();
             in.read((char *)&enterpoint_size, sizeof(unsigned));
+            std::cout << "enterpoint id size: " << enterpoint_size << std::endl;
             for (unsigned i = 0; i < enterpoint_size; i++)
             {
                 in.read((char *)&enterpoint_id, sizeof(unsigned));
                 final_index_->enterpoint_set.push_back(enterpoint_id);
+                std::cout << " " << enterpoint_id;
             }
-
+            std::cout << std::endl;
+            size_t three_ = 0, two_ = 0;
             for (unsigned i = 0; i < final_index_->getBaseLen(); i++)
             {
+                if (in.eof() || i == eff_size)
+                {
+                    // std::cout << "Load Num= " << i << " vs " << eff_size << std::endl;
+                    // std::cout << "last nbrs: " << final_index_->DEG_nodes_[eff_size]->GetSearchFriends().size() << std::endl;
+                    // eff_size = i;
+                    break;
+                }
                 unsigned node_id, neighbor_size;
                 in.read((char *)&node_id, sizeof(unsigned));
                 final_index_->DEG_nodes_[i]->SetId(node_id);
                 in.read((char *)&neighbor_size, sizeof(unsigned));
                 average_neighbor_size = average_neighbor_size + neighbor_size;
-                final_index_->DEG_nodes_[i]->SetMaxM(neighbor_size);
+                if (neighbor_size < 20)
+                    three_++;
+                else if (neighbor_size < 26)
+                    two_++;
                 std::vector<Index::DEGSimpleNeighbor> neighbors;
                 neighbors.reserve(neighbor_size);
                 int max_layer = 0;
@@ -416,6 +626,7 @@ namespace stkq
                 {
                     unsigned neighbor_id;
                     in.read((char *)&neighbor_id, sizeof(unsigned));
+
                     unsigned range_size;
                     in.read((char *)&range_size, sizeof(unsigned));
                     std::vector<std::pair<int8_t, int8_t>> use_range;
@@ -431,7 +642,17 @@ namespace stkq
                 }
                 final_index_->DEG_nodes_[i]->SetSearchFriends(neighbors);
             }
-            std::cout << "average_neighbor_size: " << average_neighbor_size / final_index_->getBaseLen() << std::endl;
+            final_index_->avg_nbrs = average_neighbor_size / eff_size;
+            final_index_->setActiveIndexLen(eff_size);
+            std::cout << "Active Num: " << eff_size << std::endl;
+            std::cout << "average_neighbor_size: " << average_neighbor_size / eff_size << " " << eff_size << " " << final_index_->getActiveIndexLen() << " " << final_index_->DEG_nodes_.size() << std::endl;
+            std::cout << "three_: " << three_
+                      << " (" << (double)three_ / eff_size << ")"
+                      << ", two_: " << two_
+                      << " (" << (double)two_ / eff_size << ")"
+                      << ", one_: " << eff_size - three_ - two_
+                      << " (" << (double)(eff_size - three_ - two_) / eff_size << ")"
+                      << std::endl;
             return this;
         }
 
@@ -603,7 +824,8 @@ namespace stkq
     {
         std::cout << "__SEARCH__" << std::endl;
 
-        unsigned K = 10; // 在近邻搜索中要找到的最近邻的数量
+        unsigned K = param_.get<unsigned>("K"); // 在近邻搜索中要找到的最近邻的数量
+        // unsigned K = 10;
 
         if (route_type == DUAL_ROUTER_HNSW)
         {
@@ -942,23 +1164,25 @@ namespace stkq
         }
 
         // ROUTE
-        ComponentSearchRoute *b = nullptr;
-        if (route_type == ROUTER_GREEDY)
-        {
-            std::cout << "__ROUTER : GREEDY__" << std::endl;
-            b = new ComponentSearchRouteGreedy(final_index_);
-        }
-        else if (route_type == ROUTER_HNSW)
-        {
-            std::cout << "__ROUTER : HNSW__" << std::endl;
-            b = new ComponentSearchRouteHNSW(final_index_);
-        }
-        else if (route_type == ROUTER_BS4)
-        {
-            std::cout << "__ROUTER : BASELINE4__" << std::endl;
-            b = new ComponentSearchRouteBS4(final_index_);
-        }
-        else if (route_type == ROUTER_DEG)
+        // ComponentSearchRoute *b = nullptr;
+        ComponentSearchRouteDEG *b = nullptr;
+        // if (route_type == ROUTER_GREEDY)
+        // {
+        //     std::cout << "__ROUTER : GREEDY__" << std::endl;
+        //     b = new ComponentSearchRouteGreedy(final_index_);
+        // }
+        // else if (route_type == ROUTER_HNSW)
+        // {
+        //     std::cout << "__ROUTER : HNSW__" << std::endl;
+        //     b = new ComponentSearchRouteHNSW(final_index_);
+        // }
+        // else if (route_type == ROUTER_BS4)
+        // {
+        //     std::cout << "__ROUTER : BASELINE4__" << std::endl;
+        //     b = new ComponentSearchRouteBS4(final_index_);
+        // }
+        // else
+        if (route_type == ROUTER_DEG)
         {
             std::cout << "__ROUTER : DEG__" << std::endl;
             b = new ComponentSearchRouteDEG(final_index_);
@@ -972,6 +1196,7 @@ namespace stkq
 
         if (L_type == L_SEARCH_ASCEND)
         {
+
             std::set<unsigned> visited;
             unsigned sg = 1000;
             float acc_set = 0.9;
@@ -982,9 +1207,11 @@ namespace stkq
             unsigned L_min = 0x7fffffff;
             // while (true)
             // {
-            for (unsigned t = 0; t < 20; t++)
+            unsigned max_L = param_.get<unsigned>("L");
+            while (true)
             {
-
+                if (L >= max_L)
+                    break;
                 L = L + K;
                 std::cout << "SEARCH_L : " << L << std::endl;
                 if (L < K)
@@ -995,18 +1222,21 @@ namespace stkq
 
                 final_index_->getParam().set<unsigned>("L_search", L);
 
+                // ThreadPool tpool(4);
                 auto s1 = std::chrono::high_resolution_clock::now();
 
                 res.clear();
                 res.resize(final_index_->getQueryLen());
-                //  #pragma omp parallel for
+                // #pragma omp parallel for
                 for (unsigned i = 0; i < final_index_->getQueryLen(); i++)
                 //                for (unsigned i = 0; i < 1000; i++)
                 {
                     final_index_->set_alpha(final_index_->getQueryWeightData()[i]);
                     std::vector<Index::Neighbor> pool;
+                    // std::cout << "qnode: " << i << std::endl;
                     a->SearchEntryInner(i, pool);
                     b->RouteInner(i, pool, res[i]);
+                    // b->RouteInner(i, pool, res[i], tpool);
                 }
                 auto e1 = std::chrono::high_resolution_clock::now();
                 std::chrono::duration<double> diff = e1 - s1;
@@ -1039,9 +1269,89 @@ namespace stkq
                 }
                 // float acc = 1 - (float)cnt / (final_index_->getGroundLen() * K);
                 float acc = recall / final_index_->getQueryLen();
-                std::cout << K << " NN accuracy: " << acc << std::endl;
+                std::cout << K << " NN accuracy: " << acc << " recall: " << recall << " final_index_->getQueryLen(): " << final_index_->getQueryLen() << std::endl;
             }
         }
+        else if (L_type == L_UPDATE_ASCEND)
+        {
+
+            std::set<unsigned> visited;
+            unsigned sg = 1000;
+            float acc_set = 0.9;
+            bool flag = false;
+            int L_sl = 1;
+            unsigned L = 0;
+            visited.insert(L);
+            unsigned L_min = 0x7fffffff;
+            // while (true)
+            // {
+            unsigned max_L = param_.get<unsigned>("L");
+            L = max_L;
+            while (true)
+            {
+                if (L > max_L)
+                    break;
+                std::cout << "SEARCH_L : " << L << std::endl;
+                if (L < K)
+                {
+                    std::cout << "search_L cannot be smaller than search_K! " << std::endl;
+                    exit(-1);
+                }
+
+                final_index_->getParam().set<unsigned>("L_search", L);
+
+                // ThreadPool tpool(4);
+                auto s1 = std::chrono::high_resolution_clock::now();
+
+                res.clear();
+                res.resize(final_index_->getQueryLen());
+                // #pragma omp parallel for
+                for (unsigned i = 0; i < final_index_->getQueryLen(); i++)
+                //                for (unsigned i = 0; i < 1000; i++)
+                {
+                    final_index_->set_alpha(final_index_->getQueryWeightData()[i]);
+                    std::vector<Index::Neighbor> pool;
+                    // std::cout << "qnode: " << i << std::endl;
+                    a->SearchEntryInner(i, pool);
+                    b->RouteInner(i, pool, res[i]);
+                    // b->RouteInner(i, pool, res[i], tpool);
+                }
+                auto e1 = std::chrono::high_resolution_clock::now();
+                std::chrono::duration<double> diff = e1 - s1;
+                std::cout << "search time: " << diff.count() / final_index_->getQueryLen() << "\n";
+                std::cout << "DistCount: " << final_index_->getDistCount() << std::endl;
+                std::cout << "HopCount: " << final_index_->getHopCount() << std::endl;
+                final_index_->resetDistCount();
+                final_index_->resetHopCount();
+                // int cnt = 0;
+                float recall = 0;
+                for (unsigned i = 0; i < final_index_->getQueryLen(); i++)
+                {
+                    if (res[i].size() == 0)
+                        continue;
+                    float tmp_recall = 0;
+                    float cnt = 0;
+                    for (unsigned j = 0; j < K; j++)
+                    {
+                        unsigned k = 0;
+                        for (; k < K; k++)
+                        {
+                            if (res[i][j] == final_index_->getGroundData()[i * final_index_->getGroundDim() + k])
+                                break;
+                        }
+                        if (k == K)
+                            cnt++;
+                    }
+                    tmp_recall = (float)(K - cnt) / (float)K;
+                    recall = recall + tmp_recall;
+                }
+                // float acc = 1 - (float)cnt / (final_index_->getGroundLen() * K);
+                float acc = recall / final_index_->getQueryLen();
+                std::cout << K << " NN accuracy: " << acc << " recall: " << recall << " final_index_->getQueryLen(): " << final_index_->getQueryLen() << std::endl;
+                L = L + K;
+            }
+        }
+
         e = std::chrono::high_resolution_clock::now();
         std::cout << "__SEARCH FINISH__" << std::endl;
 
@@ -1068,5 +1378,17 @@ namespace stkq
         }
         info.close();
     }
+    void IndexBuilder::load_trace_(char *trace_path, unsigned id_flag, Parameters &parameters)
+    {
+        auto *a = new ComponentLoad(final_index_);
+        a->load_trace_(trace_path, id_flag, parameters);
+        delete a;
+    }
 
+    void IndexBuilder::load_gt_(char *gt_path, Parameters &parameters)
+    {
+        auto *a = new ComponentLoad(final_index_);
+        a->load_gt_(gt_path, parameters);
+        delete a;
+    }
 }

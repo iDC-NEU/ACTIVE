@@ -1,6 +1,7 @@
 #include <builder.h>
 #include <set_para.h>
 #include <iostream>
+#include "policy.h"
 
 void HNSW(stkq::Parameters &parameters)
 {
@@ -230,6 +231,7 @@ void DEG(stkq::Parameters &parameters)
             ->init(stkq::INIT_DEG)
             ->save_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
         std::cout << "Build cost: " << builder->GetBuildTime().count() << "s" << std::endl;
+        builder->peak_memory_footprint();
     }
 
     else if (parameters.get<std::string>("exc_type") == "search")
@@ -240,6 +242,16 @@ void DEG(stkq::Parameters &parameters)
         builder->load_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
         builder->peak_memory_footprint();
         builder->search(stkq::TYPE::SEARCH_ENTRY_NONE, stkq::TYPE::ROUTER_DEG, stkq::TYPE::L_SEARCH_ASCEND, parameters);
+        builder->peak_memory_footprint();
+    }
+    else if (parameters.get<std::string>("exc_type") == "update")
+    {
+        // update
+        builder->load(&base_emb_path[0], &base_loc_path[0], &query_emb_path[0], &query_loc_path[0], &query_alpha_path[0], &ground_path[0], parameters, false, true);
+        builder->peak_memory_footprint();
+        builder->load_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
+        builder->peak_memory_footprint();
+        builder->update(stkq::UPDATE_DEG)->save_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
         builder->peak_memory_footprint();
     }
     else
@@ -254,16 +266,19 @@ int main(int argc, char **argv)
     // ./test/main baseline2 openimage 0.5 1 1 build
     // ./test/main deg openimage 0.5 1 1 build
 
-    if (argc != 7)
+    if (argc != 9)
     {
-        std::cout << "./main algorithm dataset alpha maximum_spatial_distance maximum_emb_distance exc_type"
+        std::cout << "./main algorithm dataset alpha maximum_spatial_distance maximum_emb_distance exc_type trace_file gt_file"
                   << std::endl;
         exit(-1);
     }
 
     stkq::Parameters parameters;
-    std::string dataset_root = R"(/mnt/hdd/yinziqi/yinziqi/graphann-tkq/dataset/)";
-    std::string index_path = R"(/mnt/hdd/yinziqi/yinziqi/graphann-tkq/saved_index/)";
+    // std::string dataset_root = R"(/root/data/output/)";
+    // std::string index_path = R"(/root/data/saved_index/)";
+    // std::string dataset_root = R"(/data_2/wangzheng/DEG/data/)";
+    std::string dataset_root = R"(/data/linsy/HVS/dataset/)";
+    std::string index_path = R"(/data_2/wangzheng/DEG/saved_index/)";
     parameters.set<std::string>("dataset_root", dataset_root);
     parameters.set<std::string>("index_path", index_path);
     parameters.set<unsigned>("n_threads", 8);
@@ -274,6 +289,8 @@ int main(int argc, char **argv)
     std::string maximum_spatial_distance(argv[4]);
     std::string maximum_emb_distance(argv[5]);
     std::string exc_type(argv[6]);
+    std::string gt_file(argv[7]);
+    std::string trace_file(argv[8]);
 
     parameters.set<float>("alpha", std::stof(alpha));
     parameters.set<float>("max_spatial_distance", std::stof(maximum_spatial_distance));
@@ -287,6 +304,8 @@ int main(int argc, char **argv)
     std::string graph_file(alg + "_" + dataset + ".index");
     parameters.set<std::string>("graph_file", index_path + graph_file);
     parameters.set<std::string>("exc_type", exc_type);
+    parameters.set<std::string>("gt_file", gt_file);
+    parameters.set<std::string>("trace_file", trace_file);
     set_para(alg, dataset, parameters);
 
     if (alg == "baseline1")

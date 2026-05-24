@@ -1,0 +1,304 @@
+#ifndef UPDATE_H
+#define UPDATE_H
+
+#include "index.h"
+#include "component.h"
+
+#include <atomic>
+namespace stkq
+{
+    class ComponentUpdate : public Component
+    {
+    public:
+        explicit ComponentUpdate(Index *index) : Component(index) {}
+
+        virtual void Update() = 0;
+    };
+
+    class ComponentUpdateDEG : public ComponentUpdate
+    {
+    public:
+        explicit ComponentUpdateDEG(Index *index) : ComponentUpdate(index) { a = new ComponentDEGPruneHeuristic(index); }
+        ComponentDEGPruneHeuristic *a;
+        ~ComponentUpdateDEG()
+        {
+            if (a != nullptr)
+                delete a;
+        }
+        void Update() override;
+
+        void Insert(int type);
+
+        void Delete(int delete_mode);
+        inline void SetInNBR_CSR_Optimized()
+        {
+            size_t N = index->getBaseLen();
+            int n_threads = index->n_threads_;
+
+            // ----------------------
+            // 1. Thread-local 入度计数
+            // ----------------------
+            std::vector<std::vector<size_t>> local_indegree(n_threads, std::vector<size_t>(N, 0));
+
+#pragma omp parallel num_threads(n_threads)
+            {
+                int tid = omp_get_thread_num();
+#pragma omp for schedule(static)
+                for (size_t i = 0; i < N; i++)
+                {
+                    auto node = index->DEG_nodes_[i];
+                    if (node->GetDelete())
+                        continue;
+                    auto &neighbors = node->GetFriends();
+                    for (auto &n : neighbors)
+                        local_indegree[tid][n.id_]++;
+                }
+            }
+
+            // ----------------------
+            // 2. 汇总得到全局入度
+            // ----------------------
+            std::vector<size_t> indegree(N, 0);
+            for (size_t i = 0; i < N; i++)
+            {
+                for (int t = 0; t < n_threads; t++)
+                    indegree[i] += local_indegree[t][i];
+            }
+
+            // ----------------------
+            // 3. prefix sum
+            // ----------------------
+            std::vector<size_t> offset(N + 1, 0);
+            for (size_t i = 0; i < N; i++)
+                offset[i + 1] = offset[i] + indegree[i];
+
+            std::vector<DEGNNDescentNeighbor> csr_data(offset[N]);
+
+            // ----------------------
+            // 4. 线程写入自己的区间
+            // ----------------------
+#pragma omp parallel num_threads(n_threads)
+            {
+                int tid = omp_get_thread_num();
+
+                // thread-local counter
+                std::vector<size_t> local_counter(N, 0);
+
+#pragma omp for schedule(static)
+                for (size_t i = 0; i < N; i++)
+                {
+                    auto node = index->DEG_nodes_[i];
+                    if (node->GetDelete())
+                        continue;
+                    auto &neighbors = node->GetFriends();
+
+                    for (auto &n : neighbors)
+                    {
+                        // 写入位置 = offset + 线程本地累加
+                        size_t pos = offset[n.id_] + local_counter[n.id_]++;
+                        csr_data[pos] = DEGNNDescentNeighbor(node->GetId(), n.emb_distance_, n.geo_distance_, true, -1);
+                    }
+                }
+            }
+
+            // ----------------------
+            // 5. 分配回每个节点
+            // ----------------------
+#pragma omp parallel for schedule(static)
+            for (size_t i = 0; i < N; i++)
+            {
+                auto node = index->DEG_nodes_[i];
+                size_t start = offset[i];
+                size_t len = offset[i + 1] - start;
+                node->GetInNeighbor().clear();
+                node->GetInNeighbor().grow_to_at_least(len);
+                node->GetInNeighbor().clear();
+
+                for (size_t j = 0; j < len; j++)
+                    node->GetInNeighbor().push_back(csr_data[start + j]);
+            }
+        }
+        inline void SetInNBR()
+        {
+#pragma omp parallel for schedule(dynamic, 128)
+            for (size_t i = 0; i < index->getBaseLen(); i++)
+            {
+                auto node = index->DEG_nodes_[i];
+                auto &neighbors = index->DEG_nodes_[i]->GetFriends();
+                for (auto &n : neighbors)
+                {
+                    auto &in_neighbor = index->DEG_nodes_[n.id_]->GetInNeighbor();
+                    in_neighbor.emplace_back(node->GetId(), n.emb_distance_, n.geo_distance_, true, -1);
+                }
+            }
+            // int avg_in = 0;
+            // for (size_t i = 0; i < index->getBaseLen(); i++)
+            // {
+            //     auto node = index->DEG_nodes_[i];
+            //     int in_nbrs = node->GetInNeighbor().size();
+            //     avg_in += in_nbrs;
+            // }
+            // std::cout << "avg_in: " << ((float)avg_in * 1.0 / index->getBaseLen());
+            // exit(1);
+        }
+
+        bool is_first_update = true;
+        // bool is_finish_update_ingraph = false;
+        void UpdateIndex();
+        // double similarity_in = 0.0;
+        // unsigned similarity_count_in = 0;
+        // double similarity_out = 0.0;
+        // unsigned similarity_count_out = 0;
+        size_t update_in_ids_size = 0;
+        std::atomic<unsigned> update_in_one{0};
+        std::atomic<unsigned> update_in_zero{0};
+        tbb::concurrent_vector<std::pair<float, std::pair<float, float>>> already_rate;
+
+        std::atomic<unsigned> update_in_two{0};
+
+        std::atomic<unsigned> update_reinsert{0};
+
+        std::atomic<int> similarity_in{0};
+        std::atomic<unsigned> similarity_count_in{0};
+
+        std::atomic<int> similarity_out{0};
+        std::atomic<unsigned> similarity_count_out{0};
+        double cmp_similarity(const std::vector<DEGNNDescentNeighbor> &a,
+                              const std::vector<DEGNNDescentNeighbor> &b)
+        {
+            std::unordered_set<int> ids;
+            ids.reserve(a.size());
+
+            for (const auto &x : a)
+                ids.insert(x.id_);
+
+            int intersection = std::count_if(
+                b.begin(), b.end(),
+                [&](const DEGNNDescentNeighbor &x)
+                {
+                    return ids.find(x.id_) != ids.end();
+                });
+
+            int union_size = a.size() + b.size() - intersection;
+
+            return union_size == 0 ? 0.0 : (double)intersection / union_size;
+        }
+
+        double cmp_similarity(const std::vector<Index::DEGNeighbor> &a,
+                              const std::vector<Index::DEGNeighbor> &b)
+        {
+            std::unordered_set<int> ids;
+            ids.reserve(a.size());
+
+            for (const auto &x : a)
+                ids.insert(x.id_);
+
+            int intersection = std::count_if(
+                b.begin(), b.end(),
+                [&](const Index::DEGNeighbor &x)
+                {
+                    return ids.find(x.id_) != ids.end();
+                });
+
+            int union_size = a.size() + b.size() - intersection;
+
+            return union_size == 0 ? 0.0 : (double)intersection / union_size;
+        }
+        void Delete_multirepair();
+        void Delete_multirepair_();
+        void Delete_multirepair_pf();
+        void Delete_reinsert();
+        void Delete_freshdiskann();
+        inline void findSkyline(std::vector<DEGNNDescentNeighbor> &points, std::vector<DEGNNDescentNeighbor> &skyline, std::vector<DEGNNDescentNeighbor> &remain_points)
+        {
+            // Sort points by x-coordinate
+            // Sweep to find skyline
+            float min_emb_dis = std::numeric_limits<float>::max();
+            for (const auto &point : points)
+            {
+                if (point.emb_distance_ < min_emb_dis)
+                {
+                    skyline.push_back(point);
+                    min_emb_dis = point.emb_distance_;
+                }
+                else
+                {
+                    remain_points.emplace_back(point);
+                }
+            }
+            // O(n)
+        }
+        inline void update_layer(std::vector<DEGNNDescentNeighbor> points, std::vector<DEGNNDescentNeighbor> &layered_points, int &num_layer)
+        {
+            layered_points.clear();
+            layered_points.reserve(points.size());
+            sort(points.begin(), points.end());
+            std::vector<DEGNNDescentNeighbor> skyline_result;
+            std::vector<DEGNNDescentNeighbor> remain_points;
+            int l = 0;
+            while (!points.empty())
+            {
+                findSkyline(points, skyline_result, remain_points);
+                points.swap(remain_points);
+                for (auto &point : skyline_result)
+                {
+                    layered_points.emplace_back(point.id_, point.emb_distance_, point.geo_distance_, true, l);
+                }
+                std::vector<DEGNNDescentNeighbor>().swap(skyline_result);
+                std::vector<DEGNNDescentNeighbor>().swap(remain_points);
+                l++;
+            }
+            num_layer = l;
+        }
+
+    private:
+        void EntryInner();
+
+        void InsertNode(Index::DEGNode *insert_node, Index::VisitedList *visited_list, int tid, int type);
+
+        void DeleteComputeInNeighbor();
+        void Delete_Only();
+
+        void Delete_SearchPF();
+
+        void UpdateNode(Index::DEGNode *update_node);
+
+        void UpdateOutNode(Index::DEGNode *update_node);
+
+        void UpdateInNeighbor();
+        void UpdateIn_Out_Neighbor(); // freshdiskann
+
+        void UpdateOutNeighbor();
+
+        void ReInsertNode_in(Index::DEGNode *update_node, Index::VisitedList *visited_list, int tid);
+        void ReInsertNode_out(Index::DEGNode *update_node, Index::VisitedList *visited_list, int tid = -1);
+
+        void SearchAtLayer(Index::DEGNode *qnode,
+                           Index::VisitedList *visited_list,
+                           std::vector<DEGNNDescentNeighbor> &pool, int tid = -1);
+
+        bool RemoveFromNeighborList(Index::DEGNode *node, unsigned target_id);
+
+        void RemoveFromEntryPoints(unsigned delete_id);
+        void RemoveFromEntryPoints();
+        void UpdateEnterpointSet(Index::DEGNode *qnode);
+
+        void UpdateEnterpointSet();
+
+        void Link(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist, int tid, int type);
+
+        void LinkReInsert(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
+
+        void LinkUpdate(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
+
+        void LinkUpdateReInsert(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist, int tid = -1);
+
+        void LinkAll(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
+
+        void LinkNewSet(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
+
+        void RecomputeDistance();
+    };
+}
+
+#endif

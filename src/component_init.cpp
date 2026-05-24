@@ -1,13 +1,32 @@
 #include "component.h"
+#include "index.h"
+#include "neighbor.h"
+#include "new_set.h"
+#include "skyline_tree.h"
+#include "tree.h"
+#include <algorithm>
+#include <atomic>
+#include <cassert>
+#include <cstddef>
 #include <functional>
-
+#include <iostream>
+#include <iterator>
+#include <memory>
+#include <ostream>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#define ANGLE 10
+#define pruneopt 1
 namespace stkq
 {
     void ComponentInitRTree::InitInner()
     {
         for (unsigned i = 0; i < index->getBaseLen(); i++)
         {
-            std::cout << i << std::endl;
+            // std::cout << i << std::endl;
             double coor[2];
             coor[0] = *(index->getBaseLocData() + i * index->getBaseLocDim());
             coor[1] = *(index->getBaseLocData() + i * index->getBaseLocDim() + 1);
@@ -300,7 +319,7 @@ namespace stkq
 #pragma omp for schedule(dynamic, 128)
                 for (size_t i = 1; i < index->getBaseLen(); ++i)
                 {
-                    std::cout << i << std::endl;
+                    // std::cout << i << std::endl;
                     auto *qnode = index->baseline4_nodes_[subindex][i];
                     InsertNode(qnode, visited_list, subindex);
                 }
@@ -587,6 +606,7 @@ namespace stkq
             index->ef_construction_ = ef_construction_;
         }
         index->n_threads_ = index->getParam().get<unsigned>("n_threads");
+
         index->mult = index->getParam().get<int>("mult");
         // index->mult -1
         index->level_mult_ = index->mult > 0 ? index->mult : (1 / log(1.0 * index->m_));
@@ -914,6 +934,8 @@ namespace stkq
         index->m_ = index->max_m_;
         index->ef_construction_ = index->getParam().get<unsigned>("ef_construction");
         index->n_threads_ = index->getParam().get<unsigned>("n_threads");
+        std::cout << "Threads: " << index->n_threads_ << ", Angle: " << ANGLE << std::endl;
+        index->cmp_counts.assign(index->n_threads_, 0);
         index->mult = index->getParam().get<int>("mult");
         index->level_mult_ = index->mult > 0 ? index->mult : (1 / log(1.0 * index->max_m_));
     }
@@ -976,6 +998,7 @@ namespace stkq
 
     void ComponentInitDEG::BuildByIncrementInsert()
     {
+
         index->DEG_nodes_.resize(index->getBaseLen());
         int level = 0;
         Index::DEGNode *first = new Index::DEGNode(0, index->max_m_);
@@ -987,18 +1010,24 @@ namespace stkq
         index->max_level_ = level;
 #pragma omp parallel
         {
+            int tid = omp_get_thread_num();
             auto *visited_list = new Index::VisitedList(index->getBaseLen());
 #pragma omp for schedule(dynamic, 128)
             for (size_t i = 1; i < index->getBaseLen(); ++i)
             {
-                // std::cout << i << std::endl;
                 level = 0;
                 auto *qnode = new Index::DEGNode(i, index->max_m_);
                 index->DEG_nodes_[i] = qnode;
-                InsertNode(qnode, visited_list);
+                InsertNode(qnode, visited_list, tid);
+                if (i % 100000 == 0)
+                    std::cout << "inserted " << qnode->GetFriends().size() << " " << i << " / " << index->getBaseLen() << " = " << int(float(i * 1.0 / index->getBaseLen()) * 100) << "%" << std::endl;
             }
             delete visited_list;
         }
+        long long cmp_count = 0;
+        for (int i = 0; i < index->cmp_counts.size(); i++)
+            cmp_count += index->cmp_counts[i];
+        std::cout << "Build CMP_Count: " << cmp_count << std::endl;
     }
 
     void ComponentInitDEG::UpdateEnterpointSet(Index::DEGNode *qnode)
@@ -1014,14 +1043,14 @@ namespace stkq
         {
             std::unique_lock<std::mutex> enterpoint_lock(index->enterpoint_mutex);
 
-            index->DEG_enterpoints_skyeline.push_back(Index::DEGNNDescentNeighbor(qnode->GetId(), e_d, s_d, true, 0));
+            index->DEG_enterpoints_skyeline.push_back(DEGNNDescentNeighbor(qnode->GetId(), e_d, s_d, true, 0));
 
             sort(index->DEG_enterpoints_skyeline.begin(), index->DEG_enterpoints_skyeline.end());
 
             float max_emb_dis = 0;
             float min_emb_dis = 1e9;
 
-            std::vector<Index::DEGNNDescentNeighbor> skyline;
+            std::vector<DEGNNDescentNeighbor> skyline;
 
             for (auto it = index->DEG_enterpoints_skyeline.rbegin(); it != index->DEG_enterpoints_skyeline.rend(); ++it)
             {
@@ -1043,17 +1072,22 @@ namespace stkq
         }
     }
 
-    void ComponentInitDEG::InsertNode(Index::DEGNode *qnode, Index::VisitedList *visited_list)
+    void ComponentInitDEG::InsertNode(Index::DEGNode *qnode, Index::VisitedList *visited_list, int tid)
     {
-        std::vector<Index::DEGNNDescentNeighbor> pool;
+        std::vector<DEGNNDescentNeighbor> pool;
         SearchAtLayer(qnode, visited_list, pool);
+        int poolsize = pool.size();
         ComponentDEGPruneHeuristic *a = new ComponentDEGPruneHeuristic(index);
         std::vector<Index::DEGNeighbor> result;
-        a->DEG2Neighbor(qnode->GetId(), qnode->GetMaxM(), pool, result);
-        for (int j = 0; j < result.size(); j++)
+        if (pruneopt)
+            a->DEG2NeighborOPT(qnode->GetId(), qnode->GetMaxM(), pool, result, ANGLE, tid);
+        else
+            a->DEG2Neighbor(qnode->GetId(), qnode->GetMaxM(), pool, result, tid);
+
+        for (size_t j = 0; j < result.size(); j++)
         {
             auto *neighbor = index->DEG_nodes_[result[j].id_];
-            Link(neighbor, qnode, 0, result[j].emb_distance_, result[j].geo_distance_);
+            Link(neighbor, qnode, 0, result[j].emb_distance_, result[j].geo_distance_, tid);
         }
         qnode->SetFriends(result);
         UpdateEnterpointSet(qnode);
@@ -1061,7 +1095,7 @@ namespace stkq
 
     void ComponentInitDEG::SearchAtLayer(Index::DEGNode *qnode,
                                          Index::VisitedList *visited_list,
-                                         std::vector<Index::DEGNNDescentNeighbor> &pool)
+                                         std::vector<DEGNNDescentNeighbor> &pool, int tid)
     {
         visited_list->Reset();
         unsigned ef_construction = index->ef_construction_;
@@ -1084,7 +1118,8 @@ namespace stkq
             float s_d = index->get_S_Dist()->compare(index->getBaseLocData() + (size_t)query * index->getBaseLocDim(),
                                                      index->getBaseLocData() + (size_t)enterpoint_id * index->getBaseLocDim(),
                                                      index->getBaseLocDim());
-
+            if (tid != -1)
+                index->cmp_counts[tid] += 2;
             pool.emplace_back(enterpoint_id, e_d, s_d, true, 0);
 
             visited_list->MarkAsVisited(enterpoint_id);
@@ -1125,7 +1160,8 @@ namespace stkq
                             float s_d = index->get_S_Dist()->compare(index->getBaseLocData() + (size_t)id * index->getBaseLocDim(),
                                                                      index->getBaseLocData() + (size_t)query * index->getBaseLocDim(),
                                                                      index->getBaseLocDim());
-
+                            if (tid != -1)
+                                index->cmp_counts[tid] += 2;
                             queue.pool.emplace_back(id, e_d, s_d, true, -1);
                         }
                     }
@@ -1147,22 +1183,24 @@ namespace stkq
         pool.swap(queue.pool);
     }
 
-    void ComponentInitDEG::Link(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist)
+    void ComponentInitDEG::Link(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist, int tid)
     {
         std::unique_lock<std::mutex> lock(source->GetAccessGuard());
         std::vector<Index::DEGNeighbor> &neighbors = source->GetFriends();
-        std::vector<Index::DEGNNDescentNeighbor> tempres;
+        std::vector<DEGNNDescentNeighbor> tempres;
         std::vector<Index::DEGNeighbor> result;
-        tempres.emplace_back(Index::DEGNNDescentNeighbor(target->GetId(), e_dist, s_dist, true, -1));
+        tempres.emplace_back(DEGNNDescentNeighbor(target->GetId(), e_dist, s_dist, true, -1));
         for (const auto &neighbor : neighbors)
         {
-            tempres.emplace_back(Index::DEGNNDescentNeighbor(neighbor.id_, neighbor.emb_distance_, neighbor.geo_distance_, true, -1));
+            tempres.emplace_back(DEGNNDescentNeighbor(neighbor.id_, neighbor.emb_distance_, neighbor.geo_distance_, true, -1));
         }
         neighbors.clear();
         ComponentDEGPruneHeuristic *a = new ComponentDEGPruneHeuristic(index);
-        a->DEG2Neighbor(source->GetId(), source->GetMaxM(), tempres, result);
+        if (pruneopt)
+            a->DEG2NeighborOPT(source->GetId(), source->GetMaxM(), tempres, result, ANGLE, tid);
+        else
+            a->DEG2Neighbor(source->GetId(), source->GetMaxM(), tempres, result, tid);
         source->SetFriends(result);
-        std::vector<Index::DEGNNDescentNeighbor>().swap(tempres);
-        std::vector<Index::DEGNeighbor>().swap(result);
     }
+
 }
