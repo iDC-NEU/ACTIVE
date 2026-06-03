@@ -1,4 +1,3 @@
-// #include "mem_use.h"
 #include "neighbor.h"
 #include "new_set.h"
 #include "tbb/concurrent_unordered_map.h"

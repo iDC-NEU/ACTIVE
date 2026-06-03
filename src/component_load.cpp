@@ -10,39 +10,6 @@
 
 namespace stkq
 {
-    // template <typename T>
-    // inline void load_data(char *filename, T *&data, unsigned &num, unsigned &dim)
-    // {
-    //     std::ifstream in(filename, std::ios::binary);
-    //     // 创建一个输入文件流in，以二进制模式打开名为filename的文件
-    //     if (!in.is_open())
-    //     {
-    //         std::cerr << "open file" << filename << " error" << std::endl;
-    //         exit(-1);
-    //     }
-    //     // 检查文件是否成功打开。如果文件没有成功打开，向标准错误流输出错误信息并退出程序
-    //     in.read((char *)&dim, 4);
-    //     // 从文件中读取4个字节的数据到dim变量中。这假设文件的开始部分包含了一个4字节的整数，表示数据的维度
-    //     in.seekg(0, std::ios::end);
-    //     // 将文件流的位置指针移动到文件末尾，用于计算文件大小
-    //     std::ios::pos_type ss = in.tellg();
-    //     // 获取当前文件流的位置，即文件的总大小
-    //     auto f_size = (size_t)ss;
-    //     num = (unsigned)(f_size / (dim + 1) / 4);
-    //     data = new T[num * dim];
-    //     // 分配足够的内存来存储所有数据LoadInner
-
-    //     in.seekg(0, std::ios::beg);
-    //     // 将文件流的位置指针重新定位到文件开头，准备开始读取数据
-    //     for (size_t i = 0; i < num; i++)
-    //     {
-    //         // std::cout << i << std::endl;
-    //         in.seekg(4, std::ios::cur);
-    //         in.read((char *)(data + i * dim), dim * sizeof(T));
-    //     }
-    //     in.close();
-    // }
-
     template <typename T>
     inline void load_data(const char *filename, T *&data, unsigned &num, unsigned &dim)
     {

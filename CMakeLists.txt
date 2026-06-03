@@ -1,7 +1,4 @@
 cmake_minimum_required(VERSION 2.8)
-# set cmake C and CXX compiler, only required for local Mac environment
-#set(CMAKE_C_COMPILER "/usr/local/bin/gcc-7")
-#set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-7")
 project(STKQ)
 set(CMAKE_CXX_STANDARD 17)
 
@@ -35,10 +32,6 @@ endfunction()
 
 
 #Boost
-# windows
-# set(BOOST_ROOT G:/MinGW-w64/boost_1_73_0)
-# macOS
-#set(BOOST_ROOT /usr/local/Cellar/boost/1.74.0/)
 find_package(Boost REQUIRED)
 if(Boost_FOUND)
     #message(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIRS}")
@@ -47,11 +40,6 @@ if(Boost_FOUND)
     link_directories(${Boost_LIBRARY_DIRS})
 endif()
 
-#Python
-#include_directories(F:/Python/include)
-#link_libraries(F:/Python/libs/python38.lib)
-
 add_compile_options(-march=native -Wall -O3 -DINFO)
 add_subdirectory(src)
 add_subdirectory(test)
-# add_compile_options(-mavx2 -O2)

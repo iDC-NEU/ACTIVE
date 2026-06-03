@@ -819,68 +819,6 @@ namespace stkq
                            std::priority_queue<Index::FurtherFirst> &result);
     };
 
-    // class ThreadPool {
-    // public:
-    //     explicit ThreadPool(size_t numThreads) {
-    //         start(numThreads);
-    //     }
-
-    //     ~ThreadPool() {
-    //         stop();
-    //     }
-
-    //     // 提交任务，返回 future
-    //     template<class F, class... Args>
-    //     auto submit(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
-    //         using RetType = decltype(f(args...));
-    //         auto task = std::make_shared<std::packaged_task<RetType()>>(
-    //             std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-    //         );
-    //         std::future<RetType> res = task->get_future();
-
-    //         {
-    //             std::unique_lock<std::mutex> lock(m_eventMutex);
-    //             m_tasks.emplace([task]() { (*task)(); });
-    //         }
-    //         m_eventVar.notify_one();
-    //         return res;
-    //     }
-
-    // private:
-    //     std::vector<std::thread> m_threads;
-    //     std::condition_variable m_eventVar;
-    //     std::mutex m_eventMutex;
-    //     bool m_stopping = false;
-    //     std::queue<std::function<void()>> m_tasks;
-
-    //     void start(size_t numThreads) {
-    //         for (size_t i = 0; i < numThreads; ++i) {
-    //             m_threads.emplace_back([this]() {
-    //                 while (true) {
-    //                     std::function<void()> task;
-    //                     {
-    //                         std::unique_lock<std::mutex> lock(m_eventMutex);
-    //                         m_eventVar.wait(lock, [this]() { return m_stopping || !m_tasks.empty(); });
-    //                         if (m_stopping && m_tasks.empty()) break;
-    //                         task = std::move(m_tasks.front());
-    //                         m_tasks.pop();
-    //                     }
-    //                     task();
-    //                 }
-    //             });
-    //         }
-    //     }
-
-    //     void stop() {
-    //         {
-    //             std::unique_lock<std::mutex> lock(m_eventMutex);
-    //             m_stopping = true;
-    //         }
-    //         m_eventVar.notify_all();
-    //         for (auto& thread : m_threads) thread.join();
-    //     }
-    // };
-
     class ComponentSearchRouteDEG : public ComponentSearchRoute
     {
     public:
