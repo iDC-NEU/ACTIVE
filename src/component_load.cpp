@@ -272,7 +272,6 @@ namespace stkq
         index->setBaseLocData(data_loc);
         index->setBaseLocDim(loc_dim);
         assert(index->getBaseLocData() != nullptr && loc_n == index->getBaseLen());
-        // if (parameters.get<unsigned>("argc") >= 16 + parameters.get<unsigned>("update_rounds"))
         {
             // query_emb_data
             float *query_emb = nullptr;
@@ -280,7 +279,6 @@ namespace stkq
             unsigned query_emb_dim{};
             std::string query_emb_file = parameters.get<std::string>("query_emb");
             std::string query_loc_file = parameters.get<std::string>("query_loc");
-            // std::string query_gt_file = parameters.get<std::string>("query_gt");
             std::string query_alpha_file = parameters.get<std::string>("query_alpha");
             load_data<float>(query_emb_file.c_str(), query_emb, query_num, query_emb_dim);
             index->setQueryEmbData(query_emb);
@@ -301,38 +299,12 @@ namespace stkq
             load_data(query_alpha_file.c_str(), query_alpha, query_alpha_num, query_alpha_dim);
             index->setQueryWeightData(query_alpha);
             assert(query_loc_num == index->getQueryLen());
-            // unsigned* ground_data = nullptr;
-            // unsigned ground_num{};
-            // unsigned ground_dim{};
-            // load_data<unsigned>(query_gt_file.c_str(), ground_data, ground_num, ground_dim);
-            // index->setGroundData(0);
             index->setGroundLen(0);
             index->setGroundDim(0);
-            // assert(index->getGroundData() != nullptr && index->getGroundLen() != 0 && index->getGroundDim() != 0);
-            // int32_t* delete_data = nullptr;
-            // int32_t* insert_data = nullptr;
-            // unsigned num{};
-            // unsigned dim{};
-            // unsigned id_flag = parameters.get<unsigned>("id_flag");
-            // switch (id_flag)
-            // {
-            // case 0:
-            //     load_trace<int32_t>(parameters.get<std::string>("trace_path").c_str(), insert_data, num, dim);
-            //     break;
-            // case 1:
-            //     load_trace<int32_t>(parameters.get<std::string>("trace_path").c_str(), delete_data, num, dim);
-            //     break;
-            // case 2:
-            //     load_trace<int32_t>(parameters.get<std::string>("trace_path").c_str(), delete_data, insert_data, num, dim);
-            //     break;
-            // }
-            // index->setDeleteData(0);
-            // index->setInsertData(0);
             index->setUpdateLen(0);
             index->setUpdateDim(0);
         }
 
-        // assert(index->getDeleteData() != nullptr && index->getUpdateLen() != 0 && index->getUpdateDim() != 0);
         index->setParam(parameters);
     }
     void ComponentLoad::load_gt_(char *gt_path, Parameters &parameters)
@@ -352,7 +324,6 @@ namespace stkq
         int32_t *insert_data = nullptr;
         unsigned num{};
         unsigned dim{};
-        // unsigned id_flag = parameters.get<unsigned>("id_flag");
         switch (id_flag)
         {
         case 0:

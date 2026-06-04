@@ -50,7 +50,6 @@ namespace stkq
                     Index::Neighbor nn(id, dist, true);
                     int r = Index::InsertIntoPool(pool.data(), L, nn);
                     // 使用Index::InsertIntoPool函数进行插入操作
-                    // if(L+1 < retset.size()) ++L;
                     if (r < nk)
                         nk = r;
                     // 更新最小插入位置nk
@@ -88,7 +87,6 @@ namespace stkq
 
         const auto K = index->getParam().get<unsigned>("K_search"); // 获取K_search参数来确定搜索结果的数量
 
-        // const auto L = index->getParam().get<unsigned>("L_search");
 
         auto *visited_list = new Index::VisitedList(index->getBaseLen()); // 初始化一个VisitedList对象来跟踪已访问的节点
 
@@ -471,9 +469,7 @@ namespace stkq
             }
         }
 
-        // std::cout << "ensure_k : " << ensure_k_path_.size() << " " << ensure_k_path_[0].first->GetId() << std::endl;
 
-        // std::vector<std::pair<Index::HnswNode*, float>> tmp;
         std::priority_queue<Index::BS4FurtherFirst> result;
         std::priority_queue<Index::BS4CloserFirst> tmp;
 
@@ -618,7 +614,6 @@ namespace stkq
             }
             else
             {
-                // std::cout<<index->enterpoint_set[i]<<" "<< std::endl;
             }
 
             float cur_e_d = index->get_E_Dist()->compare(index->getQueryEmbData() + (size_t)qnode * index->getBaseEmbDim(),
@@ -655,20 +650,14 @@ namespace stkq
             for (const auto &neighbor : neighbors)
             {
                 int neighbor_id = neighbor.id_;
-                // const std::vector<std::pair<float, float>> &use_range = neighbor.available_range;
-                // bool search_flag = false;
-                // for (int i = 0; i < use_range.size(); i++)
                 // {
-                //     if (alpha >= use_range[i].first && alpha <= use_range[i].second)
                 //     {
                 //         search_flag = true;
                 //         break;
                 //     }
-                //     if (alpha < use_range[i].first)
                 //     {
                 //         break;
                 //     }
-                //     if (alpha > use_range[i].second)
                 //     {
                 //         continue;
                 //     }

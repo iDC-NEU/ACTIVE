@@ -16,7 +16,6 @@
 #define OnlyInNBRS true
 // 1=reinsert 2=fresh+double 3=only double
 // delete_mode 1=ours(in+out) 2=reinsert 3=freshdiskann 4=only_delete
-// #define delete_mode 1
 namespace stkq
 {
 
@@ -116,9 +115,7 @@ namespace stkq
           // tempres.emplace_back(id, ed, sd, true, -1, range);
           firends.emplace_back(id, ed, sd, range);
         }
-        // int max_layer = 0;
         // update_layer(tempres, layered_tempres, max_layer);
-        // for (auto &temp : tempres)
         // {
         //   firends.emplace_back(temp.id_, temp.emb_distance_, temp.geo_distance_, temp.available_range_, temp.layer_);
         // }
@@ -488,7 +485,6 @@ namespace stkq
         queue.init_queue(pool);
         int k = 0;
         queue.updateNeighbor(k);
-        // std::cout << nk << std::endl;
 
         int l = 0;
         unsigned query = affected_nodes_vec[i];
@@ -559,7 +555,6 @@ namespace stkq
         delete visited_list;
         if (i % 100000 == 0)
         {
-          // std::cout << "searchpf nodes " << i << " / " <<
           // affected_nodes_vec.size() << std::endl;
           // PrintMemUsage("[searchpf]", i, (int)affected_nodes_vec.size());
         }
@@ -603,12 +598,9 @@ namespace stkq
     // UpdateOutNeighbor();
     e = std::chrono::high_resolution_clock::now();
     time = e - s;
-    // std::cout << "delete " << index->getUpdateLen() << " entries " << "TOTAL
     // DELETE TIME: " << time.count() << "s DELETE LATENCY " << 1000 *
     // time.count() / index->getUpdateLen() << "ms" << std::endl;
 
-    // std::cout << "Similarity in: " << similarity_in.load(std::memory_order_relaxed) * 1.0 / similarity_count_in.load(std::memory_order_relaxed) << std::endl;
-    // std::cout << "Similarity out: " << similarity_out.load(std::memory_order_relaxed) * 1.0 / similarity_count_out.load(std::memory_order_relaxed) << std::endl;
   }
   void ComponentUpdateDEG::Delete_freshdiskann()
   {
@@ -620,7 +612,6 @@ namespace stkq
     UpdateIn_Out_Neighbor();
     e = std::chrono::high_resolution_clock::now();
     time = e - s;
-    // std::cout << "delete " << index->getUpdateLen() << " entries " << "TOTAL
     // DELETE TIME: " << time.count() << "s DELETE LATENCY " << 1000 *
     // time.count() / index->getUpdateLen() << "ms" << std::endl;
     std::cout << "Similarity in: " << similarity_in.load(std::memory_order_relaxed) * 1.0 / similarity_count_in.load(std::memory_order_relaxed) << std::endl;
@@ -726,7 +717,6 @@ namespace stkq
           a->DEG2NeighborOPT(node->GetId(), node->GetMaxM(), tempres, result, index->angle, tid);
           for (auto &res : result)
           {
-            // if (index->DEG_nodes_[res.id_]->GetDelete())
             if (index->DEG_nodes_[res.id_]->GetDelete())
             {
               continue;
@@ -755,7 +745,6 @@ namespace stkq
     e = std::chrono::high_resolution_clock::now();
     time = e - s;
     std::cout << "update time: " << time.count() << std::endl;
-    // delete a;
   }
 
   void ComponentUpdateDEG::UpdateOutNeighbor()
@@ -978,75 +967,9 @@ namespace stkq
     }
     {
       std::unique_lock<std::mutex> lock(node1->GetAccessGuard());
-      // {
-      //   auto &old_nbrs = node1->GetFriends();
-      //   std::vector<DEGNNDescentNeighbor> old_nbrs_vec;
-      //   std::unordered_set<int> old_nbrs_active;
-      //   std::unordered_set<int> new_nbrs_active;
-      //   for (auto &onbr : old_nbrs)
-      //   {
-      //     old_nbrs_vec.emplace_back(onbr.id_, onbr.emb_distance_, onbr.geo_distance_, true, -1);
-      //     if (index->DEG_nodes_[onbr.id_]->GetDelete())
-      //       continue;
-      //     old_nbrs_active.insert(onbr.id_);
-      //   }
-      //   int cache_count = 0;
-      //   for (auto &newnbr : result)
-      //   {
-      //     new_nbrs_active.insert(newnbr.id_);
-      //     if (old_nbrs_active.find(newnbr.id_) != old_nbrs_active.end())
-      //     {
-      //       cache_count++;
-      //     }
-      //   }
-      //   int max_layer = 0;
-      //   std::vector<DEGNNDescentNeighbor> layer_old_nbrs;
-      //   update_layer(old_nbrs_vec, layer_old_nbrs, max_layer);
-      //   int delete_layer = 0;
-      //   for (int i = 0; i < layer_old_nbrs.size(); i++)
-      //   {
-      //     int id = layer_old_nbrs[i].id_;
-      //     if (index->DEG_nodes_[id]->GetDelete())
-      //     {
-      //       delete_layer = layer_old_nbrs[i].layer_;
-      //       break;
-      //     }
-      //   }
-      //   int cache_front_delete = 0;
-      //   int max_front_delete = 0;
-      //   int cache_back_delete = 0;
-      //   int max_back_delete = 0;
-      //   for (int i = 0; i < layer_old_nbrs.size(); i++)
-      //   {
-
-      //     if (layer_old_nbrs[i].layer_ < delete_layer)
-      //     {
-      //       max_front_delete++;
-      //       if (new_nbrs_active.find(layer_old_nbrs[i].id_) != new_nbrs_active.end())
-      //       {
-      //         cache_front_delete++;
-      //       }
-      //     }
-      //     else
-      //     {
-      //       if (index->DEG_nodes_[layer_old_nbrs[i].id_]->GetDelete())
-      //         continue;
-      //       max_back_delete++;
-      //       if (new_nbrs_active.find(layer_old_nbrs[i].id_) != new_nbrs_active.end())
-      //       {
-      //         cache_back_delete++;
-      //       }
-      //     }
-      //   }
-      //   float rate_all = result.size() ? float(cache_count * 1.0 / result.size()) : -10;
-      //   float rate_front = max_front_delete ? float(cache_front_delete * 1.0 / max_front_delete) : -20;
-      //   float rate_back = max_back_delete ? float(cache_back_delete * 1.0 / max_back_delete) : -30;
-      //   already_rate.push_back(std::make_pair(rate_all, std::make_pair(rate_front, rate_back)));
-      // }
       node1->SetFriends(result);
       UpdateEnterpointSet(node1);
     }
-    // delete a;
     for (auto &t : tmp)
     {
       auto *cand = index->DEG_nodes_[t.id_];
@@ -1097,7 +1020,6 @@ namespace stkq
                        result[i].geo_distance_, true, -1);
     }
     {
-      // std::unique_lock<std::mutex> lock(node1->GetAccessGuard());
       // node1->SetFriends(result);
       UpdateEnterpointSet(node1);
     }
@@ -1111,7 +1033,6 @@ namespace stkq
       }
       LinkUpdateReInsert(cand, node1, 0, t.emb_distance_, t.geo_distance_, tid);
     }
-    // delete a;
   }
   void ComponentUpdateDEG::Delete_multirepair()
   {
@@ -1475,7 +1396,6 @@ namespace stkq
           }
 
           int nbrs_size = tempres.size();
-          // std::assert(index->avg_nbrs!=0);
 
           if (qnode->GetInNeighbor().size() != 0 && nbrs_size >= int(qnode->GetMaxM() * 2 / 3))
           {
@@ -1855,21 +1775,17 @@ namespace stkq
       {
         old_nbrs += pair.first;
         new_nbrs += pair.second.second;
-        // std::cout << "# " << pair.first << " / " << pair.second.first <<" / "<<pair.second.second<< std::endl;
       }
       std::cout << "# " << old_nbrs * 1.0 / three_nodes.size() << " / " << new_nbrs * 1.0 / three_nodes.size() << std::endl;
 
-      // std::cout << "Start Cout Second:" << std::endl;
       new_nbrs = 0;
       old_nbrs = 0;
       for (auto pair : two_nodes)
       {
         old_nbrs += pair.first;
         new_nbrs += pair.second.second;
-        // std::cout << "# " << pair.first << " / " << pair.second.first <<" / "<<pair.second.second<< std::endl;
       }
       std::cout << "$ " << old_nbrs * 1.0 / two_nodes.size() << " / " << new_nbrs * 1.0 / two_nodes.size() << std::endl;
-      // std::cout << "Start Cout First:" << std::endl;
       new_nbrs = 0;
       old_nbrs = 0;
       for (auto pair : one_nodes)
@@ -1877,11 +1793,9 @@ namespace stkq
         old_nbrs += pair.first;
         new_nbrs += pair.second.second;
         // delta_nbrs += (pair.second.second - pair.second.first);
-        // std::cout << "# " << pair.first << " / " << pair.second.first <<" / "<<pair.second.second<< std::endl;
       }
       std::cout << "&  " << old_nbrs * 1.0 / one_nodes.size() << " / " << new_nbrs * 1.0 / one_nodes.size() << std::endl;
 
-      // std::cout<<"$ "<<new_nbrs
     }
   }
 
@@ -2205,7 +2119,6 @@ namespace stkq
       // s = std::chrono::high_resolution_clock::now();
       std::unordered_set<unsigned> delete_set{delete_ids.begin(), delete_ids.end()};
       tbb::concurrent_unordered_set<unsigned> update_id_set;
-      // std::unordered_set<unsigned> update_id_set;
       std::unordered_set<unsigned> update_out_id_set;
 #pragma omp parallel
       {
@@ -2277,7 +2190,6 @@ namespace stkq
       s = std::chrono::high_resolution_clock::now();
 #pragma omp parallel
       {
-        // auto *visited_list = new Index::VisitedList(index->getBaseLen());
 #pragma omp for schedule(dynamic, 128)
         for (size_t i = 0; i < update_ids.size(); i++)
         {
@@ -2291,7 +2203,6 @@ namespace stkq
             std::cout << "update in_nbrs " << i << " / " << update_ids.size()
                       << std::endl;
         }
-        // delete visited_list;
       }
       e = std::chrono::high_resolution_clock::now();
       time = e - s;
@@ -2308,7 +2219,6 @@ namespace stkq
             link_graph;
 #pragma omp parallel
         {
-          // auto *visited_list = new Index::VisitedList(index->getBaseLen());
 #pragma omp for schedule(dynamic, 128)
           for (size_t i = 0; i < update_out_ids.size(); i++)
           {
@@ -2326,11 +2236,8 @@ namespace stkq
                                              n.geo_distance_, true, -1);
             }
             // UpdateOutNode(qnode);
-            // if (i % 1000 == 0)
-            //     std::cout << "update out_nbrs " << i << " / " <<
             //     update_out_ids.size() << std::endl;
           }
-          // delete visited_list;
         }
         std::vector<unsigned> link_ids_vec(link_ids.begin(), link_ids.end());
 #pragma omp parallel for schedule(dynamic, 128)
@@ -2375,7 +2282,6 @@ namespace stkq
           }
 
           a->DEG2NeighborOPT(id, node->GetMaxM(), tempres, result, index->angle);
-          // delete a;
           node->SetFriends(result);
         }
         e = std::chrono::high_resolution_clock::now();
@@ -2402,8 +2308,6 @@ namespace stkq
       s = std::chrono::high_resolution_clock::now();
       std::unordered_set<unsigned> delete_set{delete_ids.begin(), delete_ids.end()};
       tbb::concurrent_unordered_set<unsigned> update_id_set;
-      // std::unordered_set<unsigned> update_id_set;
-      // std::unordered_set<unsigned> update_out_id_set;
 
 #pragma omp parallel for schedule(dynamic, 128)
       for (size_t i = 0; i < index->getActiveIndexLen(); i++)
@@ -2463,7 +2367,6 @@ namespace stkq
       s = std::chrono::high_resolution_clock::now();
 #pragma omp parallel
       {
-        // auto *visited_list = new Index::VisitedList(index->getBaseLen());
 #pragma omp for schedule(dynamic, 128)
         for (size_t i = 0; i < update_ids.size(); i++)
         {
@@ -2477,7 +2380,6 @@ namespace stkq
             std::cout << "update in_nbrs " << i << " / " << update_ids.size()
                       << std::endl;
         }
-        // delete visited_list;
       }
       e = std::chrono::high_resolution_clock::now();
       time = e - s;
@@ -2555,7 +2457,6 @@ namespace stkq
     }
     e = std::chrono::high_resolution_clock::now();
     time = e - s;
-    // std::cout << "delete_onlly time: " << time.count() << std::endl;
   }
   void ComponentUpdateDEG::UpdateNode(Index::DEGNode *update_node)
   {
@@ -2606,19 +2507,15 @@ namespace stkq
       result_filter.emplace_back(res.id_, res.emb_distance_, res.geo_distance_,
                                  res.available_range, res.layer_, res.flag_);
       // LinkUpdate(index->DEG_nodes_[res.id_], node1, 0, res.emb_distance_, res.geo_distance_);
-      // std::cout << res.layer_ << std::endl;
     }
 
     {
-      // std::unique_lock<std::mutex> lock(node1->GetAccessGuard());
       node1->SetFriends(result_filter);
     }
 
     // add link_edge
-    // for (auto& t : tmp)
     // {
     //   auto* cand = index->DEG_nodes_[t.id_];
-    //   if (cand->GetDelete())
     //   {
     //     continue;
     //   }
@@ -2662,7 +2559,6 @@ namespace stkq
       }
       LinkUpdate(cand, node1, 0, t.emb_distance_, t.geo_distance_);
     }
-    // delete a;
   }
 
   void ComponentUpdateDEG::RecomputeDistance()
@@ -2901,7 +2797,6 @@ namespace stkq
     // ComponentDEGPruneHeuristic *a = new ComponentDEGPruneHeuristic(index);
     a->DEG2NeighborOPT(source->GetId(), source->GetMaxM(), tempres, result, index->angle);
     source->SetFriends(result);
-    // delete a;
   }
 
   void ComponentUpdateDEG::LinkUpdateReInsert(Index::DEGNode *source,
@@ -2928,14 +2823,12 @@ namespace stkq
     // ComponentDEGPruneHeuristic *a = new ComponentDEGPruneHeuristic(index);
     // a->DEG2NeighborOPT(source->GetId(), source->GetMaxM(), tempres, result, index->angle);
     a->DEG2Neighbor(source->GetId(), source->GetMaxM(), tempres, result, tid);
-    // double s = cmp_similarity(neighbors, result);
     // similarity_count_out.fetch_add(1, std::memory_order_relaxed);
     // similarity_out.fetch_add(int(s * 100), std::memory_order_relaxed);
     neighbors.clear();
     source->SetFriends(result);
     std::vector<DEGNNDescentNeighbor>().swap(tempres);
     std::vector<Index::DEGNeighbor>().swap(result);
-    // delete a;
   }
 
   void ComponentUpdateDEG::Link(Index::DEGNode *source, Index::DEGNode *target,
@@ -2960,7 +2853,6 @@ namespace stkq
     else if (type == 2)
       a->DEG2Neighbor(source->GetId(), source->GetMaxM(), tempres, result, tid);
     source->SetFriends(result);
-    // delete a;
   }
 
   void ComponentUpdateDEG::LinkUpdate(Index::DEGNode *source,
@@ -2993,6 +2885,5 @@ namespace stkq
     source->SetFriends(result);
     std::vector<DEGNNDescentNeighbor>().swap(tempres);
     std::vector<Index::DEGNeighbor>().swap(result);
-    // delete a;
   }
 } // namespace stkq
