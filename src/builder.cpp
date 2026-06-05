@@ -138,7 +138,6 @@ namespace stkq
 
     IndexBuilder *IndexBuilder::update(TYPE type, unsigned id_flag, Parameters &parameters)
     {
-        int delete_mode = parameters.get<unsigned>("delete_mode");
         s = std::chrono::high_resolution_clock::now();
         ComponentUpdateDEG *a = nullptr;
 
@@ -148,10 +147,10 @@ namespace stkq
         switch (id_flag)
         {
         case 0:
-            a->Insert(delete_mode);
+            a->Insert();
             break;
         case 1:
-            a->Delete(delete_mode);
+            a->Delete();
             break;
         case 2:
             a->Update();
@@ -415,27 +414,23 @@ namespace stkq
         active_nodes = active_nodes_;
         final_index_->avg_nbrs = average_neighbor_size / active_nodes;
         final_index_->is_search_graph_finished.store(true, std::memory_order_release);
-        if (parame.get<std::string>("delete_mode") == "6" || parame.get<std::string>("delete_mode") == "7" || parame.get<std::string>("delete_mode") == "8")
-        {
-
 #pragma omp parallel for schedule(dynamic, 128)
-            for (size_t i = 0; i < final_index_->getActiveIndexLen(); i++)
+        for (size_t i = 0; i < final_index_->getActiveIndexLen(); i++)
+        {
+            auto node = final_index_->DEG_nodes_[i];
+            if (node->GetDelete())
             {
-                auto node = final_index_->DEG_nodes_[i];
-                if (node->GetDelete())
-                {
-                    continue;
-                }
-                auto &neighbors = final_index_->DEG_nodes_[i]->GetFriends();
-                for (auto &n : neighbors)
-                {
-                    auto &in_neighbor = final_index_->DEG_nodes_[n.id_]->GetInNeighbor();
-                    in_neighbor.emplace_back(node->GetId(), n.emb_distance_, n.geo_distance_, true, -1);
-                }
+                continue;
             }
-
-            final_index_->is_in_graph_finished.store(true, std::memory_order_release);
+            auto &neighbors = final_index_->DEG_nodes_[i]->GetFriends();
+            for (auto &n : neighbors)
+            {
+                auto &in_neighbor = final_index_->DEG_nodes_[n.id_]->GetInNeighbor();
+                in_neighbor.emplace_back(node->GetId(), n.emb_distance_, n.geo_distance_, true, -1);
+            }
         }
+
+        final_index_->is_in_graph_finished.store(true, std::memory_order_release);
 
         //           << (float)average_neighbor_size / active_nodes << std::endl;
 

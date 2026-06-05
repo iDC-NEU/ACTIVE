@@ -159,7 +159,6 @@ int main(int argc, char** argv)
     parameters.set<unsigned>("max_m", std::stoi(max_m));
     parameters.set<unsigned>("ef_construction", std::stoi(ef_construction));
     parameters.set<unsigned>("id_flag", std::stoi(id_flag));
-    parameters.set<unsigned>("delete_mode", std::stoi(argv[15]));
     parameters.set<unsigned>("update_rounds", 1);
 
     DEG(parameters);
