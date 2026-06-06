@@ -16,11 +16,9 @@ namespace stkq
         while (unlinked_cnt < index->getBaseLen())
         {
             DFS(flags, root, unlinked_cnt);
-            // std::cout << unlinked_cnt << '\n';
             if (unlinked_cnt >= index->getBaseLen())
                 break;
             findroot(flags, root);
-            // std::cout << "new root"<<":"<<root << '\n';
         }
         for (size_t i = 0; i < index->getBaseLen(); ++i)
         {
@@ -50,7 +48,6 @@ namespace stkq
                     break;
                 }
             }
-            // std::cout << next <<":"<<cnt <<":"<<tmp <<":"<<s.size()<< '\n';
             if (next == (index->getBaseLen() + 1))
             {
                 s.pop();
@@ -91,7 +88,6 @@ namespace stkq
         {
             if (flag[pool[i].id])
             {
-                // std::cout << pool[i].id << '\n';
                 root = pool[i].id;
 
                 found = 1;
@@ -110,9 +106,7 @@ namespace stkq
                 }
             }
         }
-        // float dist = index->getDist()->compare(index->getBaseData() + index->getBaseDim() * root,
         //                                  index->getBaseData() + index->getBaseDim() * id,
-        //                                  index->getBaseDim());
         float e_d = index->get_E_Dist()->compare(index->getBaseEmbData() + root * index->getBaseEmbDim(),
                                                  index->getBaseEmbData() + (size_t)id * index->getBaseEmbDim(),
                                                  index->getBaseEmbDim());
@@ -159,8 +153,6 @@ namespace stkq
             unsigned id = init_ids[i];
             if (id >= index->getBaseLen())
                 continue;
-            // std::cout<<id<<std::endl;
-            // float dist = index->getDist()->compare(index->getBaseData() + index->getBaseDim() * (size_t) id, query,
             //                                        (unsigned) index->getBaseDim());
 
             float e_d = index->get_E_Dist()->compare(index->getBaseEmbData() + id * index->getBaseEmbDim(),
@@ -196,8 +188,6 @@ namespace stkq
                         continue;
                     flags[id] = 1;
 
-                    // float dist = index->getDist()->compare(query,
-                    //                                        index->getBaseData() + index->getBaseDim() * (size_t) id,
                     //                                        (unsigned) index->getBaseDim());
                     float e_d = index->get_E_Dist()->compare(index->getBaseEmbData() + id * index->getBaseEmbDim(),
                                                              index->getBaseEmbData() + (size_t)query * index->getBaseEmbDim(),

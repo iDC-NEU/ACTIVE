@@ -27,9 +27,9 @@ namespace stkq
         }
         void Update() override;
 
-        void Insert(int type);
+        void Insert();
 
-        void Delete(int delete_mode);
+        void Delete();
         inline void SetInNBR_CSR_Optimized()
         {
             size_t N = index->getBaseLen();
@@ -204,11 +204,7 @@ namespace stkq
 
             return union_size == 0 ? 0.0 : (double)intersection / union_size;
         }
-        void Delete_multirepair();
-        void Delete_multirepair_();
         void Delete_multirepair_pf();
-        void Delete_reinsert();
-        void Delete_freshdiskann();
         inline void findSkyline(std::vector<DEGNNDescentNeighbor> &points, std::vector<DEGNNDescentNeighbor> &skyline, std::vector<DEGNNDescentNeighbor> &remain_points)
         {
             // Sort points by x-coordinate
@@ -254,24 +250,13 @@ namespace stkq
     private:
         void EntryInner();
 
-        void InsertNode(Index::DEGNode *insert_node, Index::VisitedList *visited_list, int tid, int type);
+        void InsertNode(Index::DEGNode *insert_node, Index::VisitedList *visited_list, int tid);
 
         void DeleteComputeInNeighbor();
-        void Delete_Only();
-
-        void Delete_SearchPF();
 
         void UpdateNode(Index::DEGNode *update_node);
 
         void UpdateOutNode(Index::DEGNode *update_node);
-
-        void UpdateInNeighbor();
-        void UpdateIn_Out_Neighbor(); // freshdiskann
-
-        void UpdateOutNeighbor();
-
-        void ReInsertNode_in(Index::DEGNode *update_node, Index::VisitedList *visited_list, int tid);
-        void ReInsertNode_out(Index::DEGNode *update_node, Index::VisitedList *visited_list, int tid = -1);
 
         void SearchAtLayer(Index::DEGNode *qnode,
                            Index::VisitedList *visited_list,
@@ -285,13 +270,9 @@ namespace stkq
 
         void UpdateEnterpointSet();
 
-        void Link(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist, int tid, int type);
-
-        void LinkReInsert(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
+        void Link(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist, int tid);
 
         void LinkUpdate(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
-
-        void LinkUpdateReInsert(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist, int tid = -1);
 
         void LinkAll(Index::DEGNode *source, Index::DEGNode *target, int level, float e_dist, float s_dist);
 

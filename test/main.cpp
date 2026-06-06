@@ -274,9 +274,6 @@ int main(int argc, char **argv)
     }
 
     stkq::Parameters parameters;
-    // std::string dataset_root = R"(/root/data/output/)";
-    // std::string index_path = R"(/root/data/saved_index/)";
-    // std::string dataset_root = R"(/data_2/wangzheng/DEG/data/)";
     std::string dataset_root = R"(/data/linsy/HVS/dataset/)";
     std::string index_path = R"(/data_2/wangzheng/DEG/saved_index/)";
     parameters.set<std::string>("dataset_root", dataset_root);

@@ -44,9 +44,6 @@ namespace stkq
                 std::cout << "ground truth data len : " << final_index_->getGroundLen() << std::endl;
                 std::cout << "ground truth data dim : " << final_index_->getGroundDim() << std::endl;
             }
-            // std::cout << "=====================" << std::endl;
-            // std::cout << final_index_->getParam().toString() << std::endl;
-            // std::cout << "=====================" << std::endl;
             delete a;
             return this;
         }
@@ -141,7 +138,6 @@ namespace stkq
 
     IndexBuilder *IndexBuilder::update(TYPE type, unsigned id_flag, Parameters &parameters)
     {
-        int delete_mode = parameters.get<unsigned>("delete_mode");
         s = std::chrono::high_resolution_clock::now();
         ComponentUpdateDEG *a = nullptr;
 
@@ -151,10 +147,10 @@ namespace stkq
         switch (id_flag)
         {
         case 0:
-            a->Insert(delete_mode);
+            a->Insert();
             break;
         case 1:
-            a->Delete(delete_mode);
+            a->Delete();
             break;
         case 2:
             a->Update();
@@ -164,7 +160,6 @@ namespace stkq
         std::cout << "__UPDATE FINISH__" << std::endl;
         delete a;
         // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(e - s).count();
-        // std::cout << "Update time: " << duration << " milliseconds" << std::endl;
         return this;
     }
 
@@ -290,9 +285,7 @@ namespace stkq
                     out.write((char *)&neighbor_id, sizeof(unsigned));
 
                     std::vector<std::pair<float, float>> use_range = neighbor.available_range;
-                    // unsigned range_size = use_range.size();
                     // out.write((char *)&range_size, sizeof(unsigned));
-                    // for (unsigned t = 0; t < range_size; t++)
                     // {
                     //     out.write((char *)&use_range[t].first, sizeof(float));
                     //     out.write((char *)&use_range[t].second, sizeof(float));
@@ -351,7 +344,6 @@ namespace stkq
     {
         final_index_->is_search_graph_finished = false;
         final_index_->is_in_graph_finished = false;
-        // std::cout << "__Start Update Graph__" << std::endl;
 
         unsigned max_m = parame.get<unsigned>("max_m");
         average_neighbor_size = 0;
@@ -422,36 +414,28 @@ namespace stkq
         active_nodes = active_nodes_;
         final_index_->avg_nbrs = average_neighbor_size / active_nodes;
         final_index_->is_search_graph_finished.store(true, std::memory_order_release);
-        if (parame.get<std::string>("delete_mode") == "6" || parame.get<std::string>("delete_mode") == "7" || parame.get<std::string>("delete_mode") == "8")
-        {
-
 #pragma omp parallel for schedule(dynamic, 128)
-            for (size_t i = 0; i < final_index_->getActiveIndexLen(); i++)
+        for (size_t i = 0; i < final_index_->getActiveIndexLen(); i++)
+        {
+            auto node = final_index_->DEG_nodes_[i];
+            if (node->GetDelete())
             {
-                auto node = final_index_->DEG_nodes_[i];
-                if (node->GetDelete())
-                {
-                    continue;
-                }
-                auto &neighbors = final_index_->DEG_nodes_[i]->GetFriends();
-                for (auto &n : neighbors)
-                {
-                    auto &in_neighbor = final_index_->DEG_nodes_[n.id_]->GetInNeighbor();
-                    in_neighbor.emplace_back(node->GetId(), n.emb_distance_, n.geo_distance_, true, -1);
-                }
+                continue;
             }
-
-            final_index_->is_in_graph_finished.store(true, std::memory_order_release);
+            auto &neighbors = final_index_->DEG_nodes_[i]->GetFriends();
+            for (auto &n : neighbors)
+            {
+                auto &in_neighbor = final_index_->DEG_nodes_[n.id_]->GetInNeighbor();
+                in_neighbor.emplace_back(node->GetId(), n.emb_distance_, n.geo_distance_, true, -1);
+            }
         }
 
-        // std::cout << "average_neighbor_size: "
+        final_index_->is_in_graph_finished.store(true, std::memory_order_release);
+
         //           << (float)average_neighbor_size / active_nodes << std::endl;
 
-        // std::cout << "active_nodes: " << active_nodes << std::endl;
 
-        // std::cout << "__Finish Update Graph__" << std::endl;
 
-        // return this;
     }
 
     IndexBuilder *IndexBuilder::load_graph(TYPE type, char *graph_file, Parameters &parame)
@@ -605,8 +589,6 @@ namespace stkq
             {
                 if (in.eof() || i == eff_size)
                 {
-                    // std::cout << "Load Num= " << i << " vs " << eff_size << std::endl;
-                    // std::cout << "last nbrs: " << final_index_->DEG_nodes_[eff_size]->GetSearchFriends().size() << std::endl;
                     // eff_size = i;
                     break;
                 }
@@ -825,7 +807,6 @@ namespace stkq
         std::cout << "__SEARCH__" << std::endl;
 
         unsigned K = param_.get<unsigned>("K"); // 在近邻搜索中要找到的最近邻的数量
-        // unsigned K = 10;
 
         if (route_type == DUAL_ROUTER_HNSW)
         {
@@ -924,7 +905,6 @@ namespace stkq
                         while (!result_queue.empty())
                         {
                             int top_node_id = result_queue.top().GetNode()->GetId();
-                            // if (tmp_res.size() < K && unique_results.find(top_node_id) == unique_results.end())
                             if (tmp_res.size() < K)
                             {
                                 tmp_res.push_back(top_node_id);
@@ -944,7 +924,6 @@ namespace stkq
 
                     for (unsigned i = 0; i < final_index_2->getQueryLen(); i++)
                     {
-                        // if (res_1[i].size() == 0 or res_2[i].size() == 0)
                         if (res[i].size() == 0)
                             continue;
                         float tmp_recall = 0;
@@ -964,7 +943,6 @@ namespace stkq
                         tmp_recall = (float)(K - cnt) / (float)K;
                         recall = recall + tmp_recall;
                     }
-                    // float acc = 1 - (float)cnt / (final_index_->getGroundLen() * K);
                     float acc = recall / final_index_2->getQueryLen();
                     std::cout << K << " NN accuracy: " << acc << std::endl;
                 }
@@ -1029,7 +1007,6 @@ namespace stkq
 
                     double throughput = final_index_1->getQueryLen() / total_duration.count();
 
-                    // std::cout << "Throughput of R-Tree: " << throughput << " queries/second\n";
 
                     res_2.clear();
                     res_2.resize(final_index_2->getQueryLen());
@@ -1044,7 +1021,6 @@ namespace stkq
 
                     throughput = final_index_1->getQueryLen() / total_duration.count();
 
-                    // std::cout << "Throughput of HNSW: " << throughput << " queries/second\n";
 
                     std::cout << "DistCount: " << final_index_2->getDistCount() << std::endl;
                     std::cout << "HopCount: " << final_index_2->getHopCount() << std::endl;
@@ -1107,7 +1083,6 @@ namespace stkq
 
                     for (unsigned i = 0; i < final_index_2->getQueryLen(); i++)
                     {
-                        // if (res_1[i].size() == 0 or res_2[i].size() == 0)
                         if (res[i].size() == 0)
                             continue;
                         float tmp_recall = 0;
@@ -1117,9 +1092,7 @@ namespace stkq
                             unsigned k = 0;
                             for (; k < K; k++)
                             {
-                                // if (res_1[i][k] == final_index_2->getGroundData()[i * final_index_2->getGroundDim() + j])
                                 //     break;
-                                // if (res_2[i][k] == final_index_2->getGroundData()[i * final_index_2->getGroundDim() + j])
                                 //     break;
                                 if (res[i][k] == final_index_2->getGroundData()[i * final_index_2->getGroundDim() + j])
                                     break;
@@ -1130,7 +1103,6 @@ namespace stkq
                         tmp_recall = (float)(K - cnt) / (float)K;
                         recall = recall + tmp_recall;
                     }
-                    // float acc = 1 - (float)cnt / (final_index_->getGroundLen() * K);
                     float acc = recall / final_index_2->getQueryLen();
                     std::cout << K << " NN accuracy: " << acc << std::endl;
                 }
@@ -1166,19 +1138,15 @@ namespace stkq
         // ROUTE
         // ComponentSearchRoute *b = nullptr;
         ComponentSearchRouteDEG *b = nullptr;
-        // if (route_type == ROUTER_GREEDY)
         // {
-        //     std::cout << "__ROUTER : GREEDY__" << std::endl;
         //     b = new ComponentSearchRouteGreedy(final_index_);
         // }
         // else if (route_type == ROUTER_HNSW)
         // {
-        //     std::cout << "__ROUTER : HNSW__" << std::endl;
         //     b = new ComponentSearchRouteHNSW(final_index_);
         // }
         // else if (route_type == ROUTER_BS4)
         // {
-        //     std::cout << "__ROUTER : BASELINE4__" << std::endl;
         //     b = new ComponentSearchRouteBS4(final_index_);
         // }
         // else
@@ -1192,7 +1160,6 @@ namespace stkq
             std::cerr << "__ROUTER : WRONG TYPE__" << std::endl;
             exit(-1);
         }
-        // std::cout << final_index_->alpha << std::endl;
 
         if (L_type == L_SEARCH_ASCEND)
         {
@@ -1229,11 +1196,9 @@ namespace stkq
                 res.resize(final_index_->getQueryLen());
                 // #pragma omp parallel for
                 for (unsigned i = 0; i < final_index_->getQueryLen(); i++)
-                //                for (unsigned i = 0; i < 1000; i++)
                 {
                     final_index_->set_alpha(final_index_->getQueryWeightData()[i]);
                     std::vector<Index::Neighbor> pool;
-                    // std::cout << "qnode: " << i << std::endl;
                     a->SearchEntryInner(i, pool);
                     b->RouteInner(i, pool, res[i]);
                     // b->RouteInner(i, pool, res[i], tpool);
@@ -1245,7 +1210,6 @@ namespace stkq
                 std::cout << "HopCount: " << final_index_->getHopCount() << std::endl;
                 final_index_->resetDistCount();
                 final_index_->resetHopCount();
-                // int cnt = 0;
                 float recall = 0;
                 for (unsigned i = 0; i < final_index_->getQueryLen(); i++)
                 {
@@ -1267,7 +1231,6 @@ namespace stkq
                     tmp_recall = (float)(K - cnt) / (float)K;
                     recall = recall + tmp_recall;
                 }
-                // float acc = 1 - (float)cnt / (final_index_->getGroundLen() * K);
                 float acc = recall / final_index_->getQueryLen();
                 std::cout << K << " NN accuracy: " << acc << " recall: " << recall << " final_index_->getQueryLen(): " << final_index_->getQueryLen() << std::endl;
             }
@@ -1307,11 +1270,9 @@ namespace stkq
                 res.resize(final_index_->getQueryLen());
                 // #pragma omp parallel for
                 for (unsigned i = 0; i < final_index_->getQueryLen(); i++)
-                //                for (unsigned i = 0; i < 1000; i++)
                 {
                     final_index_->set_alpha(final_index_->getQueryWeightData()[i]);
                     std::vector<Index::Neighbor> pool;
-                    // std::cout << "qnode: " << i << std::endl;
                     a->SearchEntryInner(i, pool);
                     b->RouteInner(i, pool, res[i]);
                     // b->RouteInner(i, pool, res[i], tpool);
@@ -1323,7 +1284,6 @@ namespace stkq
                 std::cout << "HopCount: " << final_index_->getHopCount() << std::endl;
                 final_index_->resetDistCount();
                 final_index_->resetHopCount();
-                // int cnt = 0;
                 float recall = 0;
                 for (unsigned i = 0; i < final_index_->getQueryLen(); i++)
                 {
@@ -1345,7 +1305,6 @@ namespace stkq
                     tmp_recall = (float)(K - cnt) / (float)K;
                     recall = recall + tmp_recall;
                 }
-                // float acc = 1 - (float)cnt / (final_index_->getGroundLen() * K);
                 float acc = recall / final_index_->getQueryLen();
                 std::cout << K << " NN accuracy: " << acc << " recall: " << recall << " final_index_->getQueryLen(): " << final_index_->getQueryLen() << std::endl;
                 L = L + K;

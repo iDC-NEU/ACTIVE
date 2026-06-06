@@ -189,21 +189,20 @@ int main(int argc, char **argv)
      * max_edges
      * threads
      * id_flag
-     * delete_mode
      */
 
-    if (argc < 10)
+    if (argc < 9)
     {
         std::cout << "\nUsage:\n"
                      "./update_multi graph base_emb base_loc "
                      "trace1 [trace2 ...] "
-                     "ef max_edges threads id_flag delete_mode\n";
+                     "ef max_edges threads id_flag\n";
 
         return -1;
     }
     std::cout << "Argc Num: " << argc << std::endl;
 
-    constexpr int tail = 11;
+    constexpr int tail = 10;
 
     int num_traces = (argc - 4 - tail) / 2;
     int num_gt = num_traces + 1;
@@ -241,13 +240,12 @@ int main(int argc, char **argv)
     unsigned max_edges = std::stoul(argv[offset + 1]);
     unsigned threads = std::stoul(argv[offset + 2]);
     unsigned id_flag = std::stoul(argv[offset + 3]);
-    unsigned delete_mode = std::stoul(argv[offset + 4]);
-    unsigned L = std::stoul(argv[offset + 5]);
-    unsigned K = std::stoul(argv[offset + 6]);
-    int angle = std::stoul(argv[offset + 7]);
-    std::string query_alpha = argv[offset + 8];
-    std::string query_emb = argv[offset + 9];
-    std::string query_loc = argv[offset + 10];
+    unsigned L = std::stoul(argv[offset + 4]);
+    unsigned K = std::stoul(argv[offset + 5]);
+    int angle = std::stoul(argv[offset + 6]);
+    std::string query_alpha = argv[offset + 7];
+    std::string query_emb = argv[offset + 8];
+    std::string query_loc = argv[offset + 9];
 
     std::cout << "Init Angle: " << angle << std::endl;
     //////////////////////////////////////////////////////////
@@ -271,7 +269,6 @@ int main(int argc, char **argv)
     parameters.set<unsigned>("max_m", max_edges);
     parameters.set<unsigned>("ef_construction", ef);
     parameters.set<unsigned>("id_flag", id_flag);
-    parameters.set<unsigned>("delete_mode", delete_mode);
     parameters.set<unsigned>("argc", argc);
     parameters.set<unsigned>("L", L);
     parameters.set<unsigned>("K", K);

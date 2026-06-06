@@ -26,7 +26,6 @@ namespace stkq
     {
         for (unsigned i = 0; i < index->getBaseLen(); i++)
         {
-            // std::cout << i << std::endl;
             double coor[2];
             coor[0] = *(index->getBaseLocData() + i * index->getBaseLocDim());
             coor[1] = *(index->getBaseLocData() + i * index->getBaseLocDim() + 1);
@@ -319,7 +318,6 @@ namespace stkq
 #pragma omp for schedule(dynamic, 128)
                 for (size_t i = 1; i < index->getBaseLen(); ++i)
                 {
-                    // std::cout << i << std::endl;
                     auto *qnode = index->baseline4_nodes_[subindex][i];
                     InsertNode(qnode, visited_list, subindex);
                 }
@@ -433,12 +431,8 @@ namespace stkq
             }
         }
 
-        // if (cur_level > index->baseline4_enterpoint_[subindex]->GetLevel())
         if (cur_level > index->baseline4_max_level_[subindex])
         {
-            // index->enterpoint_ = qnode;
-            // index->max_level_ = cur_level;
-            // std::unique_lock<std::mutex> max_level_lock(index->bs4_max_level_guard_);
             index->baseline4_enterpoint_[subindex] = qnode;
             index->baseline4_max_level_[subindex] = cur_level;
         }
@@ -608,7 +602,6 @@ namespace stkq
         index->n_threads_ = index->getParam().get<unsigned>("n_threads");
 
         index->mult = index->getParam().get<int>("mult");
-        // index->mult -1
         index->level_mult_ = index->mult > 0 ? index->mult : (1 / log(1.0 * index->m_));
     }
 
@@ -628,7 +621,6 @@ namespace stkq
             // 用于将接下来的循环并行化。schedule(dynamic, 128) 指示OpenMP使用动态调度，其中每个线程在完成当前分配的128个迭代后，会请求更多迭代来处理。
             for (size_t i = 1; i < index->getBaseLen(); ++i)
             {
-                // std::cout << i << std::endl;
                 level = GetRandomNodeLevel();
                 auto *qnode = new Index::HnswNode(i, level, index->max_m_, index->max_m0_);
                 index->nodes_[i] = qnode;
@@ -939,27 +931,6 @@ namespace stkq
         index->mult = index->getParam().get<int>("mult");
         index->level_mult_ = index->mult > 0 ? index->mult : (1 / log(1.0 * index->max_m_));
     }
-
-    // void ComponentInitDEG::findSkyline(std::vector<Index::DEGNeighbor> &points, std::vector<Index::DEGNeighbor> &skyline,
-    //                                    std::vector<Index::DEGNeighbor> &remain_points)
-    // {
-    //     // Sort points by x-coordinate
-    //     // Sweep to find skyline
-    //     float max_emb_dis = std::numeric_limits<float>::max();
-    //     for (const auto &point : points)
-    //     {
-    //         if (point.emb_distance_ < max_emb_dis)
-    //         {
-    //             skyline.push_back(point);
-    //             max_emb_dis = point.emb_distance_;
-    //         }
-    //         else
-    //         {
-    //             remain_points.emplace_back(point);
-    //         }
-    //     }
-    //     // O(n)
-    // }
 
     void ComponentInitDEG::EntryInner()
     {
