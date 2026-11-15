@@ -454,103 +454,62 @@ namespace stkq
             constexpr float COS_70 = 0.3420201433256687f;
             constexpr float COS_80 = 0.1736481776669304f;
             constexpr float COS_90 = 0.0000000000000000f;
-            float cos2th = 0.0f;
-            std::unordered_map<uint64_t, std::pair<float, float>> dual_dis_map;
+            float costh = 0.0f;
 
             switch (angle)
             {
             case 10:
-                cos2th = COS_10*COS_10;
+                costh = COS_10;
                 break;
             case 15:
-                cos2th = COS_15*COS_15;
+                costh = COS_15;
                 break;
             case 20:
-                cos2th = COS_20*COS_20;
+                costh = COS_20;
                 break;
             case 30:
-                cos2th = COS_30*COS_30;
+                costh = COS_30;
                 break;
             case 40:
-                cos2th = COS_40*COS_40;
+                costh = COS_40;
                 break;
             case 50:
-                cos2th = COS_50*COS_50;
+                costh = COS_50;
                 break;
             case 60:
-                cos2th = COS_60*COS_60;
+                costh = COS_60;
                 break;
             case 70:
-                cos2th = COS_70*COS_70;
+                costh = COS_70;
                 break;
             case 80:
-                cos2th = COS_80*COS_80;
+                costh = COS_80;
                 break;
             case 90:
-                cos2th = COS_90*COS_90;
+                costh = COS_90;
                 break;
             default:
                 std::cerr << "Unsupported angle: " << angle << std::endl;
                 std::exit(EXIT_FAILURE);
             }
-            auto get_dual_dist =
-                [&](int32_t a, int32_t b)
-                -> std::pair<float, float>
+            auto judge_dominate = [](const std::pair<float, float> &a,
+                                     const std::pair<float, float> &b, const float ccos) -> bool
             {
-                // auto key = std::make_pair(
-                //     std::min(a, b),
-                //     std::max(a, b));
-
-                uint64_t key =
-                    ((uint64_t)std::min(a, b) << 32) |
-                    (uint32_t)std::max(a, b);
-
-                auto it = dual_dis_map.find(key);
-
-                if (it != dual_dis_map.end())
-                    return it->second;
-
-                float e_d = index->get_E_Dist()->compare(
-                    index->getBaseEmbData() + (size_t)a * index->getBaseEmbDim(),
-                    index->getBaseEmbData() + (size_t)b * index->getBaseEmbDim(),
-                    index->getBaseEmbDim());
-
-                float s_d = index->get_S_Dist()->compare(
-                    index->getBaseLocData() + (size_t)a * index->getBaseLocDim(),
-                    index->getBaseLocData() + (size_t)b * index->getBaseLocDim(),
-                    index->getBaseLocDim());
-
-                if (tid != -1)
-                    index->cmp_counts[tid + 1] += 2;
-
-                auto result = std::make_pair(e_d, s_d);
-                dual_dis_map.emplace(key, result);
-
-                return result;
-            };
-            auto judge_dominate =
-                [](const std::pair<float, float> &a,
-                const std::pair<float, float> &b,
-                const float cos2th) -> bool
-            {
-                float ax = a.first;
-                float ay = a.second;
-                float bx = b.first;
-                float by = b.second;
+                float ax = a.first, ay = a.second;
+                float bx = b.first, by = b.second;
 
                 float dot = ax * bx + ay * by;
+                float norm_a = std::sqrt(ax * ax + ay * ay);
+                float norm_b = std::sqrt(bx * bx + by * by);
 
-                float na2 = ax * ax + ay * ay;
-                float nb2 = bx * bx + by * by;
-
-                if (na2 == 0.0f || nb2 == 0.0f)
+                // 防止零向量
+                if (norm_a == 0.0f || norm_b == 0.0f)
                     return false;
 
-                // 防止夹角 > 90°
-                if (dot <= 0.0f)
-                    return false;
+                float cos_theta = dot / (norm_a * norm_b);
 
-                return dot * dot >= cos2th * na2 * nb2;
+                // |theta| <= 30° ⇔ cos(theta) >= cos(30°)
+                return cos_theta >= ccos;
             };
 
             std::vector<Index::DEGNeighbor> picked;
@@ -591,21 +550,19 @@ namespace stkq
                         {
                             const std::vector<std::pair<float, float>> &picked_use_range = tempres_picked[j].available_range;
                             // we want to find out if this edge can prune the candidate within its picked_avaiable_range
-                            // float xq_e_dist = 0, xq_s_dist = 0;
-                            auto [xq_e_dist, xq_s_dist] = get_dual_dist(tempres_picked[j].id_, candidate[i].id_);
-                            // float xq_e_dist = index->get_E_Dist()->compare(
-                            //     index->getBaseEmbData() + (size_t)tempres_picked[j].id_ * index->getBaseEmbDim(),
-                            //     index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
-                            //     index->getBaseEmbDim());
+                            float xq_e_dist = index->get_E_Dist()->compare(
+                                index->getBaseEmbData() + (size_t)tempres_picked[j].id_ * index->getBaseEmbDim(),
+                                index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
+                                index->getBaseEmbDim());
                             // E(x,q)
 
-                            // float xq_s_dist = index->get_S_Dist()->compare(
-                            //     index->getBaseLocData() + (size_t)tempres_picked[j].id_ * index->getBaseLocDim(),
-                            //     index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
-                            //     index->getBaseLocDim());
+                            float xq_s_dist = index->get_S_Dist()->compare(
+                                index->getBaseLocData() + (size_t)tempres_picked[j].id_ * index->getBaseLocDim(),
+                                index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
+                                index->getBaseLocDim());
                             // S(x,q)
-                            // if (tid != -1)
-                            //     index->cmp_counts[tid + 1] += 2;
+                            if (tid != -1)
+                                index->cmp_counts[tid + 1] += 2;
                             float exist_e_dist = tempres_picked[j].emb_distance_; // e_xp
 
                             float exist_s_dist = tempres_picked[j].geo_distance_; // s_xp
@@ -742,22 +699,19 @@ namespace stkq
                         {
                             const std::vector<std::pair<float, float>> &picked_use_range = tempres_picked[j].available_range;
                             // we want to find out if this edge can prune the candidate within its picked_avaiable_range
-                            // float xq_e_dist = index->get_E_Dist()->compare(
-                            //     index->getBaseEmbData() + (size_t)tempres_picked[j].id_ * index->getBaseEmbDim(),
-                            //     index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
-                            //     index->getBaseEmbDim());
-                            // // E(x,q)
+                            float xq_e_dist = index->get_E_Dist()->compare(
+                                index->getBaseEmbData() + (size_t)tempres_picked[j].id_ * index->getBaseEmbDim(),
+                                index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
+                                index->getBaseEmbDim());
+                            // E(x,q)
 
-                            // float xq_s_dist = index->get_S_Dist()->compare(
-                            //     index->getBaseLocData() + (size_t)tempres_picked[j].id_ * index->getBaseLocDim(),
-                            //     index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
-                            //     index->getBaseLocDim());
-                            // // S(x,q)
-                            // if (tid != -1)
-                            //     index->cmp_counts[tid + 1] += 2;
-                            // float xq_e_dist = 0, xq_s_dist = 0;
-                            auto [xq_e_dist, xq_s_dist] = get_dual_dist(tempres_picked[j].id_, candidate[i].id_);
-
+                            float xq_s_dist = index->get_S_Dist()->compare(
+                                index->getBaseLocData() + (size_t)tempres_picked[j].id_ * index->getBaseLocDim(),
+                                index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
+                                index->getBaseLocDim());
+                            // S(x,q)
+                            if (tid != -1)
+                                index->cmp_counts[tid + 1] += 2;
                             float exist_e_dist = tempres_picked[j].emb_distance_; // e_xp
 
                             float exist_s_dist = tempres_picked[j].geo_distance_; // s_xp
@@ -888,28 +842,25 @@ namespace stkq
                             float exist_e_dist = picked[j].emb_distance_; // e_xp
 
                             float exist_s_dist = picked[j].geo_distance_; // s_xp
-                            if (!judge_dominate(std::make_pair(exist_s_dist, exist_e_dist), std::make_pair(cur_geo_dist, cur_emb_dist), cos2th))
+                            if (!judge_dominate(std::make_pair(exist_s_dist, exist_e_dist), std::make_pair(cur_geo_dist, cur_emb_dist), costh))
                             {
                                 continue;
                             }
                             const std::vector<std::pair<float, float>> &picked_use_range = picked[j].available_range;
                             // we want to find out if this edge can prune the candidate within its picked_avaiable_range
-                            // float xq_e_dist = 0, xq_s_dist = 0;
-                            auto [xq_e_dist, xq_s_dist] = get_dual_dist(picked[j].id_, candidate[i].id_);
+                            float xq_e_dist = index->get_E_Dist()->compare(
+                                index->getBaseEmbData() + (size_t)picked[j].id_ * index->getBaseEmbDim(),
+                                index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
+                                index->getBaseEmbDim());
+                            // E(x,q)
 
-                            // float xq_e_dist = index->get_E_Dist()->compare(
-                            //     index->getBaseEmbData() + (size_t)picked[j].id_ * index->getBaseEmbDim(),
-                            //     index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
-                            //     index->getBaseEmbDim());
-                            // // E(x,q)
-
-                            // float xq_s_dist = index->get_S_Dist()->compare(
-                            //     index->getBaseLocData() + (size_t)picked[j].id_ * index->getBaseLocDim(),
-                            //     index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
-                            //     index->getBaseLocDim());
+                            float xq_s_dist = index->get_S_Dist()->compare(
+                                index->getBaseLocData() + (size_t)picked[j].id_ * index->getBaseLocDim(),
+                                index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
+                                index->getBaseLocDim());
                             // S(x,q)
-                            // if (tid != -1)
-                            //     index->cmp_counts[tid + 1] += 2;
+                            if (tid != -1)
+                                index->cmp_counts[tid + 1] += 2;
                             // alpha * (E(p,x) - S(p,x) - E(p,q) + S(p,q)) <= S(p,q) - S(p,x)
                             // alpha * (E(q,x) - S(q,x) - E(p,q) + S(p,q)) <= S(p,q) - S(q,x)
                             // if alpha holds on for the two equation at the same time, the edge will be pruned
