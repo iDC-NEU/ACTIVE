@@ -316,9 +316,6 @@ namespace stkq
   }
 
 
-  // freshdiskann
-
-
 
 
   void ComponentUpdateDEG::Delete_multirepair_pf()
@@ -341,6 +338,7 @@ namespace stkq
       {
         std::this_thread::sleep_for(std::chrono::milliseconds(3));
       }
+      index->is_in_graph_finished.store(false, std::memory_order_release);
       std::cout << "In graph update!" << std::endl;
     }
     e = std::chrono::high_resolution_clock::now();

@@ -132,6 +132,7 @@ void DEG(stkq::Parameters &parameters)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        builder.final_index_->is_search_graph_finished.store(false, std::memory_order_release);
         std::cout << "search graph update over!" << std::endl;
         int an = builder.average_neighbor_size;
         int acn = builder.active_nodes;

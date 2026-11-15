@@ -1,131 +1,64 @@
 # ACTIVE
 
-ACTIVE: A Dynamic Pareto-Frontier-Based Unified Index for Dual-Vector Query.
-Supports efficient build, search, and streaming update operations.
-The full version of the paper is available [here](https://github.com/iDC-NEU/ACTIVE/blob/main/ACTIVE-FULL.pdf).
+ACTIVE is a dynamic Pareto-frontier-based unified index for dual-vector queries,
+supporting index construction, search, insertion and deletion.
+The paper and appendix are available on [arXiv](https://arxiv.org/abs/2610.35751).
 
 ## Prerequisites
 
-- **C++17** or later
-- **CMake** >= 2.8
-- **Boost** (for `dynamic_bitset`)
-- **TBB** (Intel Threading Building Blocks)
-- **OpenMP**
+- Python 3.8+ and Bash.
+- A compiler with C++20 support, CMake, Boost, TBB and OpenMP.
+- An x86 CPU with AVX-512/FMA support for the current distance implementation.
 
-Install dependencies on Ubuntu/Debian:
+Install software dependencies on Ubuntu/Debian:
 
 ```bash
-sudo apt install build-essential cmake libboost-all-dev libtbb-dev
+sudo apt install build-essential cmake python3 libboost-all-dev libtbb-dev
 ```
 
-## Compilation
+## Run Scripts
+
+The reproduction scripts are in `scripts/`. A sample of the OpenImage (OI)
+dataset with 10,000 base vectors is in `datasets/oi_mini/`.
+`run_pipeline.sh` runs **data preprocessing, index construction, search and updates**.
+
+Run the pipeline from the repository root:
 
 ```bash
-cd ACTIVE
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
+bash scripts/run_pipeline.sh datasets/oi_mini
 ```
 
-The compiled executables will be located under `build/test/`.
+The pipeline has two stages.
 
-To compile individual tools under `tools/` (data preparation utilities):
+1. Data preprocessing reads `base_img_emb.fvecs`, `base_text_emb.fvecs`,
+   `query_img_emb.fvecs` and `query_text_emb.fvecs` from the dataset directory.
+   It generates query alpha values, static ground truth, the first half of the base for
+   insertion, and separate insertion/deletion traces and dynamic ground truth.
+   Outputs are saved to the dataset's `prepared/` directory. Defaults are top-10
+   ground truth and 10 rounds of 1% updates for each operation.
+2. Experiments run through `scripts/run/run_all.sh`. It automatically compiles
+   the executables, builds or reuses the full-base and insertion indexes,
+   runs static search, and evaluates deletion and insertion separately. Logs and
+   summaries report search recall and latency, plus each update round's OPS/s and recall.
 
-```bash
-mkdir -p tools/exe
-g++ tools/gen_alpha.cpp -o tools/exe/gen_alpha
-g++ tools/process_base.cpp -o tools/exe/process_base
-g++ tools/gen_trace.cpp -o tools/exe/gen_trace
-g++ tools/gen_gt.cpp -o tools/exe/gen_gt -fopenmp
-```
-
-## Four Functionalities
-
-### 1. Build Index
-
-Build a DEG (Distance-Enhanced Graph) index from base embedding and location vectors.
-
-| Item | Path |
-|------|------|
-| Source | [`test/build_index.cpp`](test/build_index.cpp) |
-| Executable | `build/test/build_index` |
-
-**Usage:**
-
-```
-./build_index <vec_base_emb> <vec_base_loc> <graph_index> <ef(L)> <max_edges(R)> <threads> <max_emb_dis> <max_loc_dis>
-```
-
-### 2. Search
-
-Search the index for k-nearest neighbors given a query set with alpha-weighted distance.
-
-| Item | Path |
-|------|------|
-| Source | [`test/search.cpp`](test/search.cpp) |
-| Executable | `build/test/search` |
-
-**Usage:**
-
-```
-./search <vec_base_emb> <vec_base_loc> <graph_index> <L> <K> <alpha_file> <query_emb> <query_loc> <query_gt> <threads> <max_emb_dis> <max_loc_dis> <search_type>
-```
-
-### 3. Insert
-
-Insert new data points into an existing DEG index.
-
-| Item | Path |
-|------|------|
-| Source | [`test/insert.cpp`](test/insert.cpp) |
-| Executable | `build/test/insert` |
-
-**Usage:**
-
-```
-./insert <graph> <base_emb> <base_loc> <trace1> [trace2 ...] <gt1> [gt2 ...] <ef> <max_edges> <threads> <id_flag> <delete_mode> <L> <K> <angle> <query_alpha> <query_emb> <query_loc>
-```
-
-### 4. Update (Single-Round)
-
-Perform a single-round update (insert / delete / both) on the index, with search evaluation between rounds.
-
-| Item | Path |
-|------|------|
-| Source | [`test/update.cpp`](test/update.cpp) |
-| Executable | `build/test/update` |
-
-**Usage:**
-
-```
-./update <graph_path> <base_emb> <base_loc> <trace_path> <ef(L)> <max_edges(R)> <threads> <id_flag> [L K query_alpha query_emb query_loc query_gt] <delete_mode>
-```
-
----
-
-## Data Preparation Scripts
-
-Scripts for generating datasets, traces, and ground truth:
-
-| Script | Description |
-|--------|-------------|
-| [`tools/process_dataset.sh`](tools/process_dataset.sh) | Full pipeline: gen_alpha, process_base, gen_trace, gen_gt |
-| [`tools/gen_trace_gt.sh`](tools/gen_trace_gt.sh) | Generate update traces and ground truth for streaming benchmarks |
-| [`tools/et_base.sh`](tools/et_base.sh) | Dataset preprocessing with sliding-window ground truth generation |
-
-## Data Format
-
-The index works with `.fvecs` (float vectors) and `.ivecs` (integer vectors) binary formats:
-- Each file starts with a 4-byte dimension header
-- Each vector is stored as `(dim, values...)` where `dim` is a 4-byte integer followed by `dim` elements
+The default thread count is 32. Indexes and new build outputs are stored in
+`scripts/run/artifacts/oi_mini/`. Logs and summaries are stored in
+`scripts/run/log/oi_mini/`. Existing matching prepared data and indexes are reused.
+See [scripts/README.md](scripts/README.md) for parameters and examples.
 
 ## Project Structure
 
-```
-├── include/          # Header files (index, component, builder, etc.)
-├── src/              # Library source files
-├── test/             # Executable entry points (build, search, insert, update)
-├── tools/            # Data preparation utilities
-├── CMakeLists.txt    # Top-level build configuration
-└── ACTIVE-FULL.pdf   # Full paper
+```text
+ACTIVE/
+├── include/              # Index and component headers
+├── src/                  # Library implementation
+├── test/                 # Build, search and update executables
+├── datasets/             # Base/query vectors and prepared data
+├── scripts/
+│   ├── run_pipeline.sh   # Preprocessing and complete experiment pipeline
+│   ├── data_tools/       # Alpha, trace and ground-truth preparation
+│   ├── run/              # Experiment runners, logs and summaries
+│   └── README.md         # Pipeline usage and parameters
+├── CMakeLists.txt        # Build configuration
+└── ACTIVE-FULL.pdf       # Paper PDF
 ```
